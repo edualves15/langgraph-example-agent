@@ -1,12 +1,19 @@
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from app.mcp.client import shutdown_mcp_client
 from app.services.agent_service import AgentService
 
+logger = logging.getLogger(__name__)
+
 agent_service = AgentService()
+
+
+def get_agent_service() -> AgentService:
+    return agent_service
 
 
 @asynccontextmanager
@@ -29,9 +36,17 @@ class ChatResponse(BaseModel):
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(payload: ChatRequest) -> ChatResponse:
-    answer = await agent_service.run(payload.message)
-    return ChatResponse(answer=answer)
+async def chat(
+    payload: ChatRequest,
+    service: AgentService = Depends(get_agent_service),
+) -> ChatResponse:
+    try:
+        answer = await service.run(payload.message)
+        return ChatResponse(answer=answer)
+    except Exception:
+        logger.exception("Erro ao processar /chat")
+        raise HTTPException(
+            status_code=500, detail="Erro interno ao processar a mensagem.")
 
 
 @app.get("/health")
