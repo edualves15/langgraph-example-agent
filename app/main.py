@@ -9,6 +9,11 @@ from app.exceptions import AgentRuntimeError, ProviderAuthError, QuotaExceededEr
 from app.mcp.client import shutdown_mcp_client
 from app.services.agent_service import AgentService
 
+# Uvicorn configura apenas seus próprios loggers (uvicorn.*) e não toca no root.
+# Sem isso, logger.info() de código da aplicação é silenciado (root em WARNING).
+logging.basicConfig(level=logging.INFO,
+                    format="%(levelname)s: %(name)s: %(message)s")
+
 logger = logging.getLogger(__name__)
 
 agent_service = AgentService()
