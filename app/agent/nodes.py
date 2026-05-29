@@ -1,8 +1,7 @@
-from langchain_core.messages import SystemMessage
-from langgraph.prebuilt import ToolNode
+from langchain_core.messages import SystemMessage, ToolMessage
 
 from app.agent.prompts import SYSTEM_PROMPT
-from app.agent.state import AgentState
+from app.agent.state import AgentState, ToolCallInput
 
 
 def build_agent_node(llm_with_tools):
@@ -14,8 +13,19 @@ def build_agent_node(llm_with_tools):
     return agent_node
 
 
-def build_tool_node(tools):
-    return ToolNode(tools)
+def build_execute_tool_node(tools: list):
+    tool_map = {t.name: t for t in tools}
+
+    async def execute_tool(state: ToolCallInput) -> dict:
+        tc = state["tool_call"]
+        tool = tool_map[tc["name"]]
+        try:
+            result = await tool.ainvoke(tc["args"])
+        except Exception as exc:
+            result = f"Erro: {exc}"
+        return {"messages": [ToolMessage(content=str(result), tool_call_id=tc["id"], name=tc["name"])]}
+
+    return execute_tool
 
 
 def increment_tool_count(state: AgentState) -> dict:

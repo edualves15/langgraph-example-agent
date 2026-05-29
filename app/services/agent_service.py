@@ -58,7 +58,7 @@ def _process_step(node: str, update: dict, tool_map: dict) -> list[tuple[str, di
         logger.info("[agent] resposta final gerada")
         return [("step", {"text": "Gerando resposta...", "icon": "thinking", "category": "agent"})]
 
-    if node == "tools":
+    if node == "execute_tool":
         events = []
         for msg in messages:
             if isinstance(msg, ToolMessage):

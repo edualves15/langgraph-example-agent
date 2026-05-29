@@ -5,6 +5,12 @@ from langgraph.graph.message import add_messages
 
 
 class AgentState(TypedDict):
-    # Estado temporário por execução: morre ao final da requisição.
     messages: Annotated[list[BaseMessage], add_messages]
     tool_calls_count: int
+
+
+class ToolCallInput(TypedDict):
+    """Schema de entrada exclusivo do nó execute_tool (injetado via Send)."""
+    messages: Annotated[list[BaseMessage], add_messages]
+    tool_calls_count: int
+    tool_call: dict
