@@ -1,7 +1,7 @@
 from langgraph.graph import END, START, StateGraph
 
 from app.agent.edges import route_after_agent
-from app.agent.nodes import build_agent_node, build_tool_node
+from app.agent.nodes import build_agent_node, build_tool_node, increment_tool_count
 from app.agent.state import AgentState
 from app.registries.mcp_registry import get_mcp_tools
 from app.registries.tool_registry import get_local_tools
@@ -16,6 +16,7 @@ async def build_graph():
     graph = StateGraph(AgentState)
     graph.add_node("agent", build_agent_node(llm_with_tools))
     graph.add_node("tools", build_tool_node(tools))
+    graph.add_node("increment", increment_tool_count)
 
     graph.add_edge(START, "agent")
     graph.add_conditional_edges(
@@ -23,6 +24,7 @@ async def build_graph():
         route_after_agent,
         {"tools": "tools", "end": END},
     )
-    graph.add_edge("tools", "agent")
+    graph.add_edge("tools", "increment")
+    graph.add_edge("increment", "agent")
 
     return graph.compile()
