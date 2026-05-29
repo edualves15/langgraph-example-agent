@@ -21,31 +21,20 @@ def _http_status(exc: BaseException) -> int | None:
     return None
 
 
-def _log_step(node: str, update: dict) -> None:
-    """Loga de forma legível o que cada nó do grafo produziu."""
+def _extract_content(content) -> str:
+    if isinstance(content, list):
+        return "".join(block.get("text", "") for block in content if isinstance(block, dict))
+    return content
+
+
+def _process_step(node: str, update: dict, tool_map: dict) -> str | None:
+    """Loga o passo do grafo e retorna texto SSE (ou None se não for exibível)."""
     messages = update.get("messages", [])
     if node == "agent":
         last = messages[-1] if messages else None
         if isinstance(last, AIMessage) and last.tool_calls:
             names = ", ".join(tc["name"] for tc in last.tool_calls)
             logger.info("[agent] chamando tools: %s", names)
-        else:
-            logger.info("[agent] resposta final gerada")
-    elif node == "tools":
-        for msg in messages:
-            if isinstance(msg, ToolMessage):
-                logger.info("[tools] %s → %s", msg.name, msg.content)
-    elif node == "increment":
-        logger.info("[increment] tool_calls_count=%s",
-                    update.get("tool_calls_count"))
-
-
-def _build_step_text(node: str, update: dict, tool_map: dict) -> str | None:
-    """Gera texto legível para o cliente usando metadados da tool e args reais."""
-    messages = update.get("messages", [])
-    if node == "agent":
-        last = messages[-1] if messages else None
-        if isinstance(last, AIMessage) and last.tool_calls:
             parts = []
             for tc in last.tool_calls:
                 tool = tool_map.get(tc["name"])
@@ -56,9 +45,16 @@ def _build_step_text(node: str, update: dict, tool_map: dict) -> str | None:
                 except (KeyError, IndexError):
                     parts.append(template)
             return " | ".join(parts) + "..."
+        logger.info("[agent] resposta final gerada")
         return "Gerando resposta..."
     if node == "tools":
+        for msg in messages:
+            if isinstance(msg, ToolMessage):
+                logger.info("[tools] %s → %s", msg.name, msg.content)
         return "Verificado. Gerando resposta..."
+    if node == "increment":
+        logger.info("[increment] tool_calls_count=%s",
+                    update.get("tool_calls_count"))
     return None
 
 
@@ -84,12 +80,7 @@ class AgentService:
             "tool_calls_count": 0,
         }
         try:
-            last_agent_messages = None
-            async for step in graph.astream(initial_state, stream_mode="updates"):
-                for node_name, update in step.items():
-                    _log_step(node_name, update)
-                    if node_name == "agent":
-                        last_agent_messages = update.get("messages", [])
+            final_state = await graph.ainvoke(initial_state)
         except Exception as exc:
             status = _http_status(exc)
             if status == 429:
@@ -98,10 +89,10 @@ class AgentService:
                 raise ProviderAuthError() from exc
             raise AgentRuntimeError() from exc
 
-        content = last_agent_messages[-1].content
-        if isinstance(content, list):
-            return "".join(block.get("text", "") for block in content if isinstance(block, dict))
-        return content
+        messages = final_state.get("messages", [])
+        if not messages:
+            raise AgentRuntimeError()
+        return _extract_content(messages[-1].content)
 
     async def stream(self, message: str) -> AsyncIterator[dict]:
         """Executa o grafo e produz eventos de passo + resposta final para SSE."""
@@ -114,8 +105,7 @@ class AgentService:
         try:
             async for step in graph.astream(initial_state, stream_mode="updates"):
                 for node_name, update in step.items():
-                    _log_step(node_name, update)
-                    text = _build_step_text(node_name, update, self._tool_map)
+                    text = _process_step(node_name, update, self._tool_map)
                     if text:
                         yield {"text": text}
                     if node_name == "agent":
@@ -130,10 +120,4 @@ class AgentService:
                 yield {"error": "runtime_error", "detail": "Erro interno ao processar a mensagem."}
             return
         if last_agent_messages:
-            content = last_agent_messages[-1].content
-            if isinstance(content, list):
-                answer = "".join(block.get("text", "")
-                                 for block in content if isinstance(block, dict))
-            else:
-                answer = content
-            yield {"answer": answer}
+            yield {"answer": _extract_content(last_agent_messages[-1].content)}

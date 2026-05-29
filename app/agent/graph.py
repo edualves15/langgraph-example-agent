@@ -3,13 +3,13 @@ from langgraph.graph import END, START, StateGraph
 from app.agent.edges import route_after_agent
 from app.agent.nodes import build_agent_node, build_tool_node, increment_tool_count
 from app.agent.state import AgentState
-from app.registries.mcp_registry import get_mcp_tools
+from app.mcp.client import load_mcp_tools
 from app.registries.tool_registry import get_local_tools
 from app.services.llm_service import get_llm
 
 
 async def build_graph():
-    tools = get_local_tools() + await get_mcp_tools()
+    tools = get_local_tools() + await load_mcp_tools()
     llm = get_llm()
     llm_with_tools = llm.bind_tools(tools)
 

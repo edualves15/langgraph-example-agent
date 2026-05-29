@@ -8,7 +8,6 @@ dependencies = [
   "uvicorn[standard]>=0.48.0",
   "pydantic>=2.13.4",
   "pydantic-settings>=2.14.1",
-  "python-dotenv>=1.2.2",
   "langgraph>=1.2.2",
   "langchain-core>=1.4.0",
   "langchain-mcp-adapters>=0.2.2",

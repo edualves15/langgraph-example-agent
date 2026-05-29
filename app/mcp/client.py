@@ -15,7 +15,10 @@ async def load_mcp_tools() -> list[Any]:
 
     from langchain_mcp_adapters.client import MultiServerMCPClient
 
-    servers = json.loads(settings.mcp_servers_json or "{}")
+    try:
+        servers = json.loads(settings.mcp_servers_json or "{}")
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"MCP_SERVERS_JSON inválido: {exc}") from exc
     if not servers:
         return []
 
