@@ -88,13 +88,10 @@ async def chat_stream(
     service: AgentService = Depends(get_agent_service),
 ) -> AsyncIterator[ServerSentEvent]:
     async for event in service.stream(payload.message):
-        if "error" in event:
-            yield ServerSentEvent(raw_data=json.dumps(event, ensure_ascii=False), event="error")
+        event_type = event.pop("_event", "step")
+        yield ServerSentEvent(raw_data=json.dumps(event, ensure_ascii=False), event=event_type)
+        if event_type == "error":
             return
-        elif "answer" in event:
-            yield ServerSentEvent(raw_data=json.dumps(event, ensure_ascii=False), event="done")
-        else:
-            yield ServerSentEvent(raw_data=json.dumps(event, ensure_ascii=False), event="step")
 
 
 @app.get("/health")

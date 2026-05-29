@@ -17,7 +17,11 @@ def get_events(day: str) -> str:
     return f"Eventos em {day}: " + "; ".join(events)
 
 
-get_events.metadata = {"step_label": "Consultando calendário para {day}"}
+get_events.metadata = {
+    "step_label": "Consultando calendário para {day}",
+    "step_icon": "calendar",
+    "step_category": "lookup",
+}
 
 
 @tool
@@ -26,4 +30,8 @@ def today() -> str:
     return date.today().isoformat()
 
 
-today.metadata = {"step_label": "Verificando a data atual"}
+today.metadata = {
+    "step_label": "Verificando a data atual",
+    "step_icon": "clock",
+    "step_category": "system",
+}

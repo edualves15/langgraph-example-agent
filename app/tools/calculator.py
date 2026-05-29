@@ -31,4 +31,8 @@ def calculator(expression: str) -> str:
     return str(result)
 
 
-calculator.metadata = {"step_label": "Calculando: {expression}"}
+calculator.metadata = {
+    "step_label": "Calculando: {expression}",
+    "step_icon": "calculator",
+    "step_category": "compute",
+}
