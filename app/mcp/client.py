@@ -3,13 +3,13 @@ from typing import Any
 
 from app.config import settings
 
+_mcp_client = None
+
 
 async def load_mcp_tools() -> list[Any]:
-    """Carrega tools MCP opcionalmente.
+    """Abre conexões MCP e retorna as tools. Chamado no startup via lifespan."""
+    global _mcp_client
 
-    Mantém MCP fora da API pública. As tools MCP entram apenas no registry interno
-    do agente. Requer langchain-mcp-adapters configurado no ambiente.
-    """
     if not settings.mcp_enabled:
         return []
 
@@ -19,5 +19,15 @@ async def load_mcp_tools() -> list[Any]:
     if not servers:
         return []
 
-    client = MultiServerMCPClient(servers)
-    return await client.get_tools()
+    _mcp_client = MultiServerMCPClient(servers)
+    await _mcp_client.__aenter__()
+    return await _mcp_client.get_tools()
+
+
+async def shutdown_mcp_client() -> None:
+    """Fecha conexões MCP. Chamado no shutdown via lifespan."""
+    global _mcp_client
+
+    if _mcp_client is not None:
+        await _mcp_client.__aexit__(None, None, None)
+        _mcp_client = None

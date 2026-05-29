@@ -7,6 +7,10 @@ class AgentService:
     def __init__(self):
         self._graph = None
 
+    async def warmup(self) -> None:
+        """Inicializa o grafo antecipadamente. Chame no startup da aplicação."""
+        await self._get_graph()
+
     async def _get_graph(self):
         if self._graph is None:
             self._graph = await build_graph()

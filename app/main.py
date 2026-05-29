@@ -1,10 +1,23 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
+from app.mcp.client import shutdown_mcp_client
 from app.services.agent_service import AgentService
 
-app = FastAPI(title="LangGraph Private Agent", version="0.1.0")
 agent_service = AgentService()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await agent_service.warmup()
+    yield
+    await shutdown_mcp_client()
+
+
+app = FastAPI(title="LangGraph Private Agent",
+              version="0.1.0", lifespan=lifespan)
 
 
 class ChatRequest(BaseModel):
