@@ -1,4 +1,5 @@
 import logging
+from collections.abc import AsyncIterator
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
@@ -39,9 +40,32 @@ def _log_step(node: str, update: dict) -> None:
                     update.get("tool_calls_count"))
 
 
+def _build_step_text(node: str, update: dict, tool_map: dict) -> str | None:
+    """Gera texto legível para o cliente usando metadados da tool e args reais."""
+    messages = update.get("messages", [])
+    if node == "agent":
+        last = messages[-1] if messages else None
+        if isinstance(last, AIMessage) and last.tool_calls:
+            parts = []
+            for tc in last.tool_calls:
+                tool = tool_map.get(tc["name"])
+                template = tool.metadata.get(
+                    "step_label", tc["name"]) if tool else tc["name"]
+                try:
+                    parts.append(template.format(**tc.get("args", {})))
+                except (KeyError, IndexError):
+                    parts.append(template)
+            return " | ".join(parts) + "..."
+        return "Gerando resposta..."
+    if node == "tools":
+        return "Verificado. Gerando resposta..."
+    return None
+
+
 class AgentService:
     def __init__(self):
         self._graph = None
+        self._tool_map: dict = {}
 
     async def warmup(self) -> None:
         """Inicializa o grafo antecipadamente. Chame no startup da aplicação."""
@@ -49,7 +73,8 @@ class AgentService:
 
     async def _get_graph(self):
         if self._graph is None:
-            self._graph = await build_graph()
+            self._graph, tools = await build_graph()
+            self._tool_map = {t.name: t for t in tools}
         return self._graph
 
     async def run(self, message: str) -> str:
@@ -77,3 +102,38 @@ class AgentService:
         if isinstance(content, list):
             return "".join(block.get("text", "") for block in content if isinstance(block, dict))
         return content
+
+    async def stream(self, message: str) -> AsyncIterator[dict]:
+        """Executa o grafo e produz eventos de passo + resposta final para SSE."""
+        graph = await self._get_graph()
+        initial_state = {
+            "messages": [HumanMessage(content=message)],
+            "tool_calls_count": 0,
+        }
+        last_agent_messages = None
+        try:
+            async for step in graph.astream(initial_state, stream_mode="updates"):
+                for node_name, update in step.items():
+                    _log_step(node_name, update)
+                    text = _build_step_text(node_name, update, self._tool_map)
+                    if text:
+                        yield {"text": text}
+                    if node_name == "agent":
+                        last_agent_messages = update.get("messages", [])
+        except Exception as exc:
+            status = _http_status(exc)
+            if status == 429:
+                yield {"error": "quota_exceeded", "detail": "Cota da API excedida. Tente novamente em breve."}
+            elif status in (401, 403):
+                yield {"error": "auth_error", "detail": "Erro de configuração do serviço."}
+            else:
+                yield {"error": "runtime_error", "detail": "Erro interno ao processar a mensagem."}
+            return
+        if last_agent_messages:
+            content = last_agent_messages[-1].content
+            if isinstance(content, list):
+                answer = "".join(block.get("text", "")
+                                 for block in content if isinstance(block, dict))
+            else:
+                answer = content
+            yield {"answer": answer}

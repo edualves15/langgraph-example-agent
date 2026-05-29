@@ -1,8 +1,11 @@
+import json
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import BaseModel, Field
 
 from app.exceptions import AgentRuntimeError, ProviderAuthError, QuotaExceededError
@@ -77,6 +80,21 @@ async def chat(
 ) -> ChatResponse:
     answer = await service.run(payload.message)
     return ChatResponse(answer=answer)
+
+
+@app.post("/chat/stream", response_class=EventSourceResponse)
+async def chat_stream(
+    payload: ChatRequest,
+    service: AgentService = Depends(get_agent_service),
+) -> AsyncIterator[ServerSentEvent]:
+    async for event in service.stream(payload.message):
+        if "error" in event:
+            yield ServerSentEvent(raw_data=json.dumps(event, ensure_ascii=False), event="error")
+            return
+        elif "answer" in event:
+            yield ServerSentEvent(raw_data=json.dumps(event, ensure_ascii=False), event="done")
+        else:
+            yield ServerSentEvent(raw_data=json.dumps(event, ensure_ascii=False), event="step")
 
 
 @app.get("/health")

@@ -29,3 +29,6 @@ def calculator(expression: str) -> str:
     parsed = ast.parse(expression, mode="eval")
     result = _eval(parsed.body)
     return str(result)
+
+
+calculator.metadata = {"step_label": "Calculando: {expression}"}

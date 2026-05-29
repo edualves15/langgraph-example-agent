@@ -17,7 +17,13 @@ def get_events(day: str) -> str:
     return f"Eventos em {day}: " + "; ".join(events)
 
 
+get_events.metadata = {"step_label": "Consultando calendário para {day}"}
+
+
 @tool
 def today() -> str:
     """Retorna a data atual local no formato YYYY-MM-DD."""
     return date.today().isoformat()
+
+
+today.metadata = {"step_label": "Verificando a data atual"}

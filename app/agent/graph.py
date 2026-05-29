@@ -27,4 +27,4 @@ async def build_graph():
     graph.add_edge("tools", "increment")
     graph.add_edge("increment", "agent")
 
-    return graph.compile()
+    return graph.compile(), tools
