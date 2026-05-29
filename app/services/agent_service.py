@@ -51,7 +51,7 @@ def _process_step(node: str, update: dict, tool_map: dict) -> str | None:
         for msg in messages:
             if isinstance(msg, ToolMessage):
                 logger.info("[tools] %s → %s", msg.name, msg.content)
-        return "Verificado. Gerando resposta..."
+        return None
     if node == "increment":
         logger.info("[increment] tool_calls_count=%s",
                     update.get("tool_calls_count"))
