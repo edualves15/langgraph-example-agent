@@ -19,6 +19,7 @@ def get_events(day: str) -> str:
 
 get_events.metadata = {
     "step_label": "Consultando calendário para {day}",
+    "step_done_label": "Calendário consultado",
     "step_icon": "calendar",
     "step_category": "lookup",
 }
@@ -32,6 +33,7 @@ def today() -> str:
 
 today.metadata = {
     "step_label": "Verificando a data atual",
+    "step_done_label": "Data obtida",
     "step_icon": "clock",
     "step_category": "system",
 }

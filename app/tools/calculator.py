@@ -33,6 +33,7 @@ def calculator(expression: str) -> str:
 
 calculator.metadata = {
     "step_label": "Calculando: {expression}",
+    "step_done_label": "Cálculo concluído",
     "step_icon": "calculator",
     "step_category": "compute",
 }

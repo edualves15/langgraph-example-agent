@@ -56,21 +56,34 @@ def _process_step(node: str, update: dict, tool_map: dict) -> list[tuple[str, di
                     ("step", {"text": f"{text}...", **_meta_fields(meta)}))
             return events
         logger.info("[agent] resposta final gerada")
-        return [("step", {"text": "Gerando resposta...", "icon": "thinking", "category": "agent"})]
+        return []
 
-    if node == "execute_tool":
+    if node == "tools":
         events = []
         for msg in messages:
             if isinstance(msg, ToolMessage):
-                logger.info("[tools] %s → %s", msg.name, msg.content)
                 meta = getattr(tool_map.get(msg.name), "metadata", {})
-                events.append(
-                    ("tool_result", {"tool": msg.name, "result": msg.content, **_meta_fields(meta)}))
+                is_error = isinstance(
+                    msg.content, str) and msg.content.startswith("Erro:")
+                if is_error:
+                    logger.warning("[tools] %s → ERRO | %s",
+                                   msg.name, msg.content[:120])
+                    label = meta.get("step_error_label", f"{msg.name} falhou")
+                    events.append(
+                        ("step", {"text": label, "icon": "error", "category": "error"}))
+                else:
+                    preview = msg.content[:80] + \
+                        "..." if len(msg.content) > 80 else msg.content
+                    logger.info("[tools] %s → ok | %s", msg.name, preview)
+                    label = meta.get("step_done_label",
+                                     f"{msg.name} concluído")
+                    events.append(
+                        ("step", {"text": label, **_meta_fields(meta)}))
+        if events:
+            events.append(
+                ("step", {"text": "Gerando resposta...", "icon": "thinking", "category": "agent"}))
         return events
 
-    if node == "increment":
-        logger.info("[increment] tool_calls_count=%s",
-                    update.get("tool_calls_count"))
     return []
 
 
@@ -89,7 +102,7 @@ class AgentService:
         return self._graph
 
     def _initial_state(self, message: str) -> dict:
-        return {"messages": [HumanMessage(content=message)], "tool_calls_count": 0}
+        return {"messages": [HumanMessage(content=message)]}
 
     async def run(self, message: str) -> str:
         graph = await self._get_graph()
@@ -118,6 +131,7 @@ class AgentService:
                     if node_name == "agent":
                         last_agent_messages = update.get("messages", [])
         except Exception as exc:
+            logger.exception("Erro durante o stream do agente")
             key, detail = _STREAM_ERRORS.get(_http_status(
                 exc), ("runtime_error", "Erro interno ao processar a mensagem."))
             yield {"_event": "error", "error": key, "detail": detail}

@@ -1,7 +1,7 @@
-from langchain_core.messages import SystemMessage, ToolMessage
+from langchain_core.messages import SystemMessage
 
 from app.agent.prompts import SYSTEM_PROMPT
-from app.agent.state import AgentState, ToolCallInput
+from app.agent.state import AgentState
 
 
 def build_agent_node(llm_with_tools):

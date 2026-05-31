@@ -2,7 +2,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8")
 
     app_env: str = "local"
     llm_provider: str = "gemini"
@@ -16,6 +17,8 @@ class Settings(BaseSettings):
 
     mcp_enabled: bool = False
     mcp_servers_json: str = "{}"
+
+    tavily_api_key: str = ""
 
     max_tool_calls: int = 5
 
