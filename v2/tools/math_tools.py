@@ -132,3 +132,10 @@ def calculate_math_expression(expression: str) -> str:
     result = _safe_eval_math_node(tree.body)
 
     return str(result)
+
+
+calculate_math_expression.metadata = {
+    "step_label": "Calculando expressão matemática...",
+    "step_label_template": "Calculando {expression}...",
+    "step_done_label": "Cálculo concluído",
+}

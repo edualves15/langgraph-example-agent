@@ -115,15 +115,31 @@ def tool_node(state: State):
         # Localiza tool correta
         tool = tools_by_name[tool_name]
 
+        # Emite mensagem de progresso dinâmica usando os args reais
+        # Tenta formatar o template com os args; cai no label estático se falhar
+        if tool.metadata:
+            template = tool.metadata.get("step_label_template")
+            if template:
+                try:
+                    step_label = template.format(**tool_call["args"])
+                except KeyError:
+                    step_label = tool.metadata.get("step_label", tool_name)
+            else:
+                step_label = tool.metadata.get("step_label", tool_name)
+        else:
+            step_label = tool_name
+        print(step_label)
+
         # Executa tool com argumentos enviados pelo LLM
         result = tool.invoke(
-            tool_call["args"]
+            tool_call["args"],
         )
 
         # Cria mensagem de resposta da tool
         outputs.append(
             ToolMessage(
                 content=result,
+                name=tool_name,
                 tool_call_id=tool_call["id"],
             )
         )
@@ -226,8 +242,23 @@ graph = builder.compile()
 initial_state = {
     "messages": [
         HumanMessage(
-            # content="Quanto é ((42 - 7) / 5) ** 2?"
-            content="Que dia foi ontem?"
+            # Exemplos de prompts para testar ferramentas individuais:
+            # content="Quanto é ((42 - 7) / 5) ** 2?"         → calculate_math_expression
+            # content="Que dia foi ontem?"                     → shift_date
+            # content="Que dia da semana é 25/12/2026?"        → get_date_details
+            # content="Quantos dias úteis até 31/12/2026?"     → count_business_days
+            # content="Qual é a próxima segunda-feira?"        → find_next_weekday
+            # content="Quais são todas as sextas de junho/2026?" → list_dates_in_range
+            #
+            # Prompt multi-tool: força múltiplas tools no mesmo loop
+            content=(
+                "Daqui a exatamente 100 dias úteis, que data será? "
+                "E qual é o dia da semana dessa data? "
+                "Além disso, quantos dias corridos existem entre hoje e essa data?"
+                "Qual é a próxima sexta-feira? "
+                "E quantas sextas-feiras ainda existem em 2026 a partir de hoje? "
+                "Além disso, quanto é (52 * 5) + 3?"
+            )
         )
     ]
 }
@@ -319,12 +350,25 @@ for mode, data in graph.stream(
     stream_mode=["updates", "messages"],
 ):
     if mode == "updates":
-        # Qual nó executou e o que mudou no estado
         for node_name, update in data.items():
-            print(f"\n[{node_name}]", update)
+            for msg in update.get("messages", []):
+                if isinstance(msg, ToolMessage):
+                    t = tools_by_name.get(msg.name)
+                    label = t.metadata.get("step_done_label", msg.name) if t and t.metadata else msg.name
+                    print(label)
 
     elif mode == "messages":
         token, metadata = data
-        # Filtra apenas tokens do nó agente (ignora ToolMessages)
-        if metadata.get("langgraph_node") == "agent" and token.content:
-            print(token.content, end="", flush=True)
+        if metadata.get("langgraph_node") != "agent":
+            continue
+        # content pode ser string ou lista de content blocks (padrão LangChain)
+        content = token.content
+        text = (
+            "".join(c.get("text", "") for c in content if isinstance(c, dict))
+            if isinstance(content, list)
+            else content or ""
+        )
+        if text:
+            print(text, end="", flush=True)
+
+print()
