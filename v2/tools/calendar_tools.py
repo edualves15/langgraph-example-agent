@@ -718,47 +718,47 @@ def list_dates_in_range(
 
 get_today_info.metadata = {
     "step_label": "Consultando data de hoje...",
-    "step_done_label": "Data atual obtida",
+    "step_icon": "📅",
 }
 
 get_date_details.metadata = {
     "step_label": "Consultando detalhes da data...",
     "step_label_template": "Consultando detalhes de {date_str}...",
-    "step_done_label": "Detalhes da data obtidos",
+    "step_icon": "📅",
 }
 
 calculate_date_difference.metadata = {
     "step_label": "Calculando diferença entre datas...",
     "step_label_template": "Calculando diferença entre {start_date} e {end_date}...",
-    "step_done_label": "Diferença calculada",
+    "step_icon": "📅",
 }
 
 shift_date.metadata = {
     "step_label": "Calculando data resultante...",
     "step_label_template": "Calculando {base_date} + {amount} {unit}...",
-    "step_done_label": "Data calculada",
+    "step_icon": "📅",
 }
 
 count_business_days.metadata = {
     "step_label": "Contando dias úteis...",
     "step_label_template": "Contando dias úteis entre {start_date} e {end_date}...",
-    "step_done_label": "Dias úteis contados",
+    "step_icon": "📅",
 }
 
 add_business_days.metadata = {
     "step_label": "Calculando prazo em dias úteis...",
     "step_label_template": "Calculando {business_days} dias úteis a partir de {start_date}...",
-    "step_done_label": "Prazo calculado",
+    "step_icon": "📅",
 }
 
 find_next_weekday.metadata = {
     "step_label": "Buscando próximo dia da semana...",
     "step_label_template": "Buscando {direction} {weekday} a partir de {reference_date}...",
-    "step_done_label": "Dia da semana encontrado",
+    "step_icon": "📅",
 }
 
 list_dates_in_range.metadata = {
     "step_label": "Listando datas no intervalo...",
     "step_label_template": "Listando datas entre {start_date} e {end_date}...",
-    "step_done_label": "Datas listadas",
+    "step_icon": "📅",
 }

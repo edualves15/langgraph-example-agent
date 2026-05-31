@@ -126,9 +126,11 @@ def tool_node(state: State):
                     step_label = tool.metadata.get("step_label", tool_name)
             else:
                 step_label = tool.metadata.get("step_label", tool_name)
+            icon = tool.metadata.get("step_icon", "")
         else:
             step_label = tool_name
-        print(step_label)
+            icon = ""
+        print(f"{icon} {step_label}" if icon else step_label)
 
         # Executa tool com argumentos enviados pelo LLM
         result = tool.invoke(
@@ -351,15 +353,7 @@ for mode, data in graph.stream(
     initial_state,
     stream_mode=["updates", "messages"],
 ):
-    if mode == "updates":
-        for node_name, update in data.items():
-            for msg in update.get("messages", []):
-                if isinstance(msg, ToolMessage):
-                    t = tools_by_name.get(msg.name)
-                    label = t.metadata.get("step_done_label", msg.name) if t and t.metadata else msg.name
-                    print(label)
-
-    elif mode == "messages":
+    if mode == "messages":
         token, metadata = data
         if metadata.get("langgraph_node") != "agent":
             continue

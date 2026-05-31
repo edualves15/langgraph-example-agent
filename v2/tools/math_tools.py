@@ -137,5 +137,5 @@ def calculate_math_expression(expression: str) -> str:
 calculate_math_expression.metadata = {
     "step_label": "Calculando expressão matemática...",
     "step_label_template": "Calculando {expression}...",
-    "step_done_label": "Cálculo concluído",
+    "step_icon": "🔢",
 }
