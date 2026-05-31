@@ -5,6 +5,7 @@ from typing import NoReturn
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.agent.graph import build_graph
+from app.config import settings
 from app.exceptions import AgentError, AgentRuntimeError, ProviderAuthError, QuotaExceededError
 
 logger = logging.getLogger(__name__)
@@ -159,13 +160,40 @@ class AgentService:
             return
 
         last_agent_messages = None
+        tool_calls_done = 0
         try:
             async for step in graph.astream(self._initial_state(message), stream_mode="updates"):
                 for node_name, update in step.items():
+                    node_messages = update.get("messages", [])
+
+                    if node_name == "agent":
+                        last = node_messages[-1] if node_messages else None
+                        # Ghost step fix: se já atingiu o limite, o route_after_agent
+                        # vai para END sem executar as tools — não emitir os step events
+                        if (
+                            isinstance(last, AIMessage)
+                            and last.tool_calls
+                            and tool_calls_done >= settings.max_tool_calls
+                        ):
+                            logger.warning(
+                                "[agent] limite de tool calls atingido (%d/%d); "
+                                "descartando %d chamada(s) pendente(s)",
+                                tool_calls_done,
+                                settings.max_tool_calls,
+                                len(last.tool_calls),
+                            )
+                            last_agent_messages = node_messages
+                            continue
+
                     for event_type, payload in _process_step(node_name, update, self._tool_map):
                         yield {"_event": event_type, **payload}
+
+                    if node_name == "tools":
+                        tool_calls_done += sum(
+                            1 for m in node_messages if isinstance(m, ToolMessage)
+                        )
                     if node_name == "agent":
-                        last_agent_messages = update.get("messages", [])
+                        last_agent_messages = node_messages
         except Exception as exc:
             logger.exception("Erro durante stream do agente")
             error_key, detail = _classify_error(exc)
@@ -173,7 +201,22 @@ class AgentService:
             return
 
         if last_agent_messages:
-            yield {"_event": "done", "answer": _extract_content(last_agent_messages[-1].content)}
+            last_msg = last_agent_messages[-1]
+            content = _extract_content(last_msg.content)
+            if content:
+                yield {"_event": "done", "answer": content}
+            else:
+                # Empty answer fix: agente atingiu limite de tools sem gerar resposta final
+                logger.warning(
+                    "[agent] limite de tools atingido sem resposta final para: %.80s", message
+                )
+                yield {
+                    "_event": "done",
+                    "answer": (
+                        "Não foi possível concluir a pesquisa dentro do limite de buscas. "
+                        "Tente reformular a pergunta com mais detalhes ou de forma mais específica."
+                    ),
+                }
         else:
             logger.error(
                 "Grafo concluído sem mensagem do agente para: %.80s", message)
