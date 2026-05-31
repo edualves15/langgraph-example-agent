@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     llm_provider: str = "gemini"
 
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.5-flash"
+    gemini_model: str = "gemini-3.1-flash-lite"
 
     proprietary_base_url: str = ""
     proprietary_api_key: str = ""
