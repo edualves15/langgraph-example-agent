@@ -9,8 +9,18 @@ from langgraph.graph import StateGraph, START, END
 
 load_dotenv()
 
-# Importa a tool externa
+# Importa tools
 from tools.math_tools import calculate_math_expression
+from tools.calendar_tools import (
+    get_today_info,
+    get_date_details,
+    calculate_date_difference,
+    shift_date,
+    count_business_days,
+    add_business_days,
+    find_next_weekday,
+    list_dates_in_range,
+)
 
 
 # =========================================================
@@ -42,13 +52,29 @@ llm = ChatGoogleGenerativeAI(
 # Entrega as tools ao modelo
 # para permitir tool calling automático
 llm_with_tools = llm.bind_tools([
-    calculate_math_expression
+    calculate_math_expression,
+    get_today_info,
+    get_date_details,
+    calculate_date_difference,
+    shift_date,
+    count_business_days,
+    add_business_days,
+    find_next_weekday,
+    list_dates_in_range,
 ])
 
 # Mapa para localizar tools pelo nome
 # retornado pelo LLM
 tools_by_name = {
-    "calculate_math_expression": calculate_math_expression
+    "calculate_math_expression": calculate_math_expression,
+    "get_today_info": get_today_info,
+    "get_date_details": get_date_details,
+    "calculate_date_difference": calculate_date_difference,
+    "shift_date": shift_date,
+    "count_business_days": count_business_days,
+    "add_business_days": add_business_days,
+    "find_next_weekday": find_next_weekday,
+    "list_dates_in_range": list_dates_in_range,
 }
 
 
@@ -197,10 +223,11 @@ graph = builder.compile()
 # =========================================================
 
 # Estado inicial da execução
-input_data = {
+initial_state = {
     "messages": [
         HumanMessage(
-            content="Quanto é ((42 - 7) / 5) ** 2?"
+            # content="Quanto é ((42 - 7) / 5) ** 2?"
+            content="Que dia foi ontem?"
         )
     ]
 }
@@ -271,9 +298,33 @@ input_data = {
 # Eventos internos detalhados do runtime
 # ---------------------------------------------------------
 
-for event in graph.stream(
-    input_data,
-    stream_mode="debug",
+# for event in graph.stream(
+#     input_data,
+#     stream_mode="debug",
+# ):
+#     print("\nDEBUG EVENT:")
+#     print(event)
+
+
+# ---------------------------------------------------------
+# stream_mode=["updates", "messages"]
+#
+# Combinação ideal para frontend:
+# - "updates" para progresso de ferramentas
+# - "messages" para streaming de tokens da resposta final
+# ---------------------------------------------------------
+
+for mode, data in graph.stream(
+    initial_state,
+    stream_mode=["updates", "messages"],
 ):
-    print("\nDEBUG EVENT:")
-    print(event)
+    if mode == "updates":
+        # Qual nó executou e o que mudou no estado
+        for node_name, update in data.items():
+            print(f"\n[{node_name}]", update)
+
+    elif mode == "messages":
+        token, metadata = data
+        # Filtra apenas tokens do nó agente (ignora ToolMessages)
+        if metadata.get("langgraph_node") == "agent" and token.content:
+            print(token.content, end="", flush=True)
