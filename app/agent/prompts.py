@@ -1,9 +1,7 @@
 from datetime import date
 
-_TODAY = date.today().strftime("%d/%m/%Y")
-
-SYSTEM_PROMPT = f"""
-Você é um assistente útil e prestativo. Hoje é {_TODAY}.
+_TEMPLATE = """
+Você é um assistente útil e prestativo. Hoje é {today}.
 
 **Suas capacidades:**
 Você tem acesso a ferramentas poderosas para responder com precisão e fornecer informações atualizadas. Use-as quando apropriado para melhor servir o usuário.
@@ -32,3 +30,8 @@ Você tem acesso a ferramentas poderosas para responder com precisão e fornecer
 - Respeite o contexto corporativo: não acesse, compartilhe ou processe dados sensíveis além do que é necessário.
 - Mantenha respostas concisas e claras — evite verbosidade desnecessária.
 """.strip()
+
+
+def get_system_prompt() -> str:
+    """Retorna o system prompt com a data de hoje atualizada."""
+    return _TEMPLATE.format(today=date.today().strftime("%d/%m/%Y"))

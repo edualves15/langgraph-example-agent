@@ -26,8 +26,11 @@ def _eval(node):
 @tool
 def calculator(expression: str) -> str:
     """Calcula expressões matemáticas simples, como '180 / 6' ou '(12 + 8) * 3'."""
-    parsed = ast.parse(expression, mode="eval")
-    result = _eval(parsed.body)
+    try:
+        parsed = ast.parse(expression, mode="eval")
+        result = _eval(parsed.body)
+    except (SyntaxError, ValueError, ZeroDivisionError, OverflowError) as exc:
+        return f"Expressão inválida ou erro no cálculo: {exc}"
     return str(result)
 
 

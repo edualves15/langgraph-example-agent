@@ -87,11 +87,19 @@ async def chat_stream(
     payload: ChatRequest,
     service: AgentService = Depends(get_agent_service),
 ) -> AsyncIterator[ServerSentEvent]:
-    async for event in service.stream(payload.message):
-        event_type = event.pop("_event", "step")
-        yield ServerSentEvent(raw_data=json.dumps(event, ensure_ascii=False), event=event_type)
-        if event_type == "error":
-            return
+    try:
+        async for event in service.stream(payload.message):
+            event_type = event.pop("_event", "step")
+            yield ServerSentEvent(raw_data=json.dumps(event, ensure_ascii=False), event=event_type)
+            if event_type in ("error", "done"):
+                return
+    except Exception:
+        logger.exception("Erro inesperado no endpoint /chat/stream")
+        yield ServerSentEvent(
+            raw_data=json.dumps(
+                {"error": "runtime_error", "detail": "Erro interno."}, ensure_ascii=False),
+            event="error",
+        )
 
 
 @app.get("/health")

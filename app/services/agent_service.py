@@ -1,21 +1,17 @@
 import logging
 from collections.abc import AsyncIterator
+from typing import NoReturn
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.agent.graph import build_graph
-from app.exceptions import AgentRuntimeError, ProviderAuthError, QuotaExceededError
+from app.exceptions import AgentError, AgentRuntimeError, ProviderAuthError, QuotaExceededError
 
 logger = logging.getLogger(__name__)
 
-_STREAM_ERRORS: dict[int, tuple[str, str]] = {
-    429: ("quota_exceeded", "Cota da API excedida. Tente novamente em breve."),
-    401: ("auth_error", "Erro de configuração do serviço."),
-    403: ("auth_error", "Erro de configuração do serviço."),
-}
-
 
 def _http_status(exc: BaseException) -> int | None:
+    """Percorre a cadeia de causas buscando um HTTP status code."""
     current: BaseException | None = exc
     while current is not None:
         for attr in ("status_code", "code", "status"):
@@ -26,10 +22,37 @@ def _http_status(exc: BaseException) -> int | None:
     return None
 
 
+def _classify_error(exc: BaseException) -> tuple[str, str]:
+    """Retorna (error_key, detail_message) com base no HTTP status da exceção."""
+    status = _http_status(exc)
+    if status == 429:
+        return "quota_exceeded", "Cota da API excedida. Tente novamente em breve."
+    if status in (401, 403):
+        return "auth_error", "Erro de configuração do serviço."
+    return "runtime_error", "Erro interno ao processar a mensagem."
+
+
+def _raise_classified(exc: Exception) -> NoReturn:
+    """Re-levanta a exceção como erro de domínio classificado."""
+    status = _http_status(exc)
+    if status == 429:
+        raise QuotaExceededError() from exc
+    if status in (401, 403):
+        raise ProviderAuthError() from exc
+    raise AgentRuntimeError() from exc
+
+
 def _extract_content(content) -> str:
+    """Extrai texto da mensagem, suportando respostas multi-parte (Gemini)."""
     if isinstance(content, list):
-        return "".join(b.get("text", "") for b in content if isinstance(b, dict))
-    return content
+        parts = []
+        for block in content:
+            if isinstance(block, dict):
+                parts.append(block.get("text", ""))
+            elif isinstance(block, str):
+                parts.append(block)
+        return "".join(parts)
+    return str(content)
 
 
 def _meta_fields(meta: dict) -> dict:
@@ -42,8 +65,9 @@ def _process_step(node: str, update: dict, tool_map: dict) -> list[tuple[str, di
     if node == "agent":
         last = messages[-1] if messages else None
         if isinstance(last, AIMessage) and last.tool_calls:
-            logger.info("[agent] chamando tools: %s", ", ".join(
-                tc["name"] for tc in last.tool_calls))
+            tool_names = ", ".join(tc["name"] for tc in last.tool_calls)
+            logger.info("[agent] solicitando %d ferramenta(s): %s",
+                        len(last.tool_calls), tool_names)
             events = []
             for tc in last.tool_calls:
                 meta = getattr(tool_map.get(tc["name"]), "metadata", {})
@@ -55,30 +79,31 @@ def _process_step(node: str, update: dict, tool_map: dict) -> list[tuple[str, di
                 events.append(
                     ("step", {"text": f"{text}...", **_meta_fields(meta)}))
             return events
-        logger.info("[agent] resposta final gerada")
+        last_content = _extract_content(last.content) if last else ""
+        logger.info("[agent] resposta final gerada (%d chars)",
+                    len(last_content))
         return []
 
     if node == "tools":
         events = []
         for msg in messages:
-            if isinstance(msg, ToolMessage):
-                meta = getattr(tool_map.get(msg.name), "metadata", {})
-                is_error = isinstance(
-                    msg.content, str) and msg.content.startswith("Erro:")
-                if is_error:
-                    logger.warning("[tools] %s → ERRO | %s",
-                                   msg.name, msg.content[:120])
-                    label = meta.get("step_error_label", f"{msg.name} falhou")
-                    events.append(
-                        ("step", {"text": label, "icon": "error", "category": "error"}))
-                else:
-                    preview = msg.content[:80] + \
-                        "..." if len(msg.content) > 80 else msg.content
-                    logger.info("[tools] %s → ok | %s", msg.name, preview)
-                    label = meta.get("step_done_label",
-                                     f"{msg.name} concluído")
-                    events.append(
-                        ("step", {"text": label, **_meta_fields(meta)}))
+            if not isinstance(msg, ToolMessage):
+                continue
+            meta = getattr(tool_map.get(msg.name), "metadata", {})
+            is_error = getattr(msg, "status", "success") == "error"
+            if is_error:
+                logger.warning("[tools] %s → erro | %s",
+                               msg.name, str(msg.content)[:120])
+                label = meta.get("step_error_label", f"{msg.name} falhou")
+                events.append(
+                    ("step", {"text": label, "icon": "error", "category": "error"}))
+            else:
+                content_str = str(msg.content)
+                preview = content_str[:80] + \
+                    "..." if len(content_str) > 80 else content_str
+                logger.info("[tools] %s → ok | %s", msg.name, preview)
+                label = meta.get("step_done_label", f"{msg.name} concluído")
+                events.append(("step", {"text": label, **_meta_fields(meta)}))
         if events:
             events.append(
                 ("step", {"text": "Gerando resposta...", "icon": "thinking", "category": "agent"}))
@@ -99,29 +124,40 @@ class AgentService:
         if self._graph is None:
             self._graph, tools = await build_graph()
             self._tool_map = {t.name: t for t in tools}
+            logger.info(
+                "Grafo do agente inicializado com %d ferramenta(s): %s",
+                len(tools),
+                ", ".join(t.name for t in tools),
+            )
         return self._graph
 
     def _initial_state(self, message: str) -> dict:
         return {"messages": [HumanMessage(content=message)]}
 
     async def run(self, message: str) -> str:
-        graph = await self._get_graph()
         try:
+            graph = await self._get_graph()
             final_state = await graph.ainvoke(self._initial_state(message))
+        except AgentError:
+            raise
         except Exception as exc:
-            status = _http_status(exc)
-            if status == 429:
-                raise QuotaExceededError() from exc
-            if status in (401, 403):
-                raise ProviderAuthError() from exc
-            raise AgentRuntimeError() from exc
+            logger.exception("Erro durante invocação do agente")
+            _raise_classified(exc)
         messages = final_state.get("messages", [])
         if not messages:
+            logger.error("Grafo retornou estado sem mensagens")
             raise AgentRuntimeError()
         return _extract_content(messages[-1].content)
 
     async def stream(self, message: str) -> AsyncIterator[dict]:
-        graph = await self._get_graph()
+        try:
+            graph = await self._get_graph()
+        except Exception as exc:
+            logger.exception("Falha ao inicializar o grafo do agente")
+            error_key, detail = _classify_error(exc)
+            yield {"_event": "error", "error": error_key, "detail": detail}
+            return
+
         last_agent_messages = None
         try:
             async for step in graph.astream(self._initial_state(message), stream_mode="updates"):
@@ -131,10 +167,14 @@ class AgentService:
                     if node_name == "agent":
                         last_agent_messages = update.get("messages", [])
         except Exception as exc:
-            logger.exception("Erro durante o stream do agente")
-            key, detail = _STREAM_ERRORS.get(_http_status(
-                exc), ("runtime_error", "Erro interno ao processar a mensagem."))
-            yield {"_event": "error", "error": key, "detail": detail}
+            logger.exception("Erro durante stream do agente")
+            error_key, detail = _classify_error(exc)
+            yield {"_event": "error", "error": error_key, "detail": detail}
             return
+
         if last_agent_messages:
             yield {"_event": "done", "answer": _extract_content(last_agent_messages[-1].content)}
+        else:
+            logger.error(
+                "Grafo concluído sem mensagem do agente para: %.80s", message)
+            yield {"_event": "error", "error": "no_response", "detail": "Nenhuma resposta gerada pelo agente."}
