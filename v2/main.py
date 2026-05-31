@@ -258,6 +258,8 @@ initial_state = {
                 "Qual é a próxima sexta-feira? "
                 "E quantas sextas-feiras ainda existem em 2026 a partir de hoje? "
                 "Além disso, quanto é (52 * 5) + 3?"
+                "Que dia da semana foi o Natal do ano retrasado?"
+                "Quais os feriados bancários desse ano?"
             )
         )
     ]
