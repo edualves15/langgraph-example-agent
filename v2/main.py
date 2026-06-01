@@ -122,10 +122,9 @@ async def agent_node(state: State, writer: StreamWriter) -> dict:
     """
 
     # --- Fase 1: Reasoning (durante a chamada LLM) ---
+    has_tool_results = any(isinstance(m, ToolMessage) for m in state["messages"])
     reasoning_text = (
-        "Processando informacoes..." if any(
-            isinstance(m, ToolMessage) for m in state["messages"]
-        )
+        "Analisando resultados..." if has_tool_results
         else "Analisando sua pergunta..."
     )
     writer({
@@ -138,10 +137,12 @@ async def agent_node(state: State, writer: StreamWriter) -> dict:
 
     response = await llm_with_tools.ainvoke(state["messages"])
 
-    writer({"type": "narration", "event": "reasoning_stop", "level": 1})
-
-    # --- Fase 2: Anuncia cada tool call (ou silencioso se for resposta final) ---
     tool_calls = getattr(response, "tool_calls", [])
+
+    # --- Fase 2: Reasoning concluido ---
+    writer({"type": "narration", "event": "reasoning_end", "level": 1})
+
+    # --- Fase 3: Anuncia cada tool call ---
 
     for tc in tool_calls:
         meta = get_tool_narration(TOOLS_BY_NAME.get(tc["name"]))
@@ -248,13 +249,22 @@ async def run(message: str) -> None:
 if __name__ == "__main__":
     asyncio.run(
         run(
-            "Daqui a exatamente 100 dias uteis, que data sera? "
-            "E qual e o dia da semana dessa data? "
-            "Alem disso, quantos dias corridos existem entre hoje e essa data? "
-            "Qual e a proxima sexta-feira? "
-            "E quantas sextas-feiras ainda existem em 2026 a partir de hoje? "
-            "Alem disso, quanto e (52 * 5) + 3? "
-            "Que dia da semana foi o Natal do ano retrasado? "
-            "Quais os feriados bancarios desse ano?"
+            "Preciso planejar um projeto que comeca hoje e termina em 15 de dezembro de 2026. "
+            "Me ajude com o seguinte:\n\n"
+            "1. Quantos dias uteis temos entre hoje e o prazo final? "
+            "Desconte os feriados bancarios brasileiros que caem nesse periodo. "
+            "Considere que trabalhamos de segunda a sexta.\n\n"
+            "2. Se dividirmos o projeto em 4 fases iguais em dias uteis, "
+            "qual a data final de cada fase? "
+            "Calcule uma a uma a partir de hoje.\n\n"
+            "3. A data final (15/12/2026) cai em qual dia da semana? "
+            "Se for final de semana ou feriado, qual o dia util imediatamente anterior?\n\n"
+            "4. Quantas segundas-feiras teremos nesse periodo? "
+            "Isso importa porque nossas reunioes de alinhamento sao sempre as segundas.\n\n"
+            "5. Considerando que a equipe tem 5 pessoas e cada uma entrega "
+            "exatamente 3 pontos de historia por dia util, "
+            "quantos pontos no total a equipe consegue entregar nesse periodo? "
+            "Calcule os pontos totais usando a ferramenta de matematica.\n\n"
+            "6. Qual foi o dia da semana em que eu nasci, em 15 de agosto de 1990?"
         )
     )

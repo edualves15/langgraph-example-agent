@@ -103,8 +103,8 @@ def render_event(event: NarrationEvent) -> None:
         p = prefix if prefix else "💭 "
         _safe_print(f"  >  {p}{text}")
 
-    elif etype == "reasoning_stop":
-        pass
+    elif etype == "reasoning_end":
+        pass  # silencioso — fim da fase de raciocinio
 
     elif etype == "tool_call" and stage == "start":
         # Anuncio pre-execucao (agent_node)

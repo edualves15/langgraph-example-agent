@@ -110,8 +110,8 @@ class NarrationAdapter:
             return self._handle_tool_error(data)
         elif event_type == "reasoning_started":
             return self._handle_reasoning_started(data)
-        elif event_type == "reasoning_stop":
-            return self._handle_reasoning_stop(data)
+        elif event_type == "reasoning_end":
+            return self._handle_reasoning_end(data)
         return None
 
     def _handle_reasoning_started(self, data: dict) -> NarrationEvent:
@@ -119,13 +119,16 @@ class NarrationAdapter:
             type="reasoning_started",
             stage="start",
             text=data.get("text", ""),
+            icon=data.get("icon", ""),
             level=data.get("level", 1),
         )
 
-    def _handle_reasoning_stop(self, data: dict) -> NarrationEvent:
+    def _handle_reasoning_end(self, data: dict) -> NarrationEvent:
         return NarrationEvent(
-            type="reasoning_stop",
+            type="reasoning_end",
             stage="stop",
+            text=data.get("text", ""),
+            icon=data.get("icon", ""),
             level=data.get("level", 1),
         )
 
