@@ -4,16 +4,7 @@ from typing import Union
 
 from langchain_core.tools import tool
 
-from v2.tools import NarrationMeta
-
-
-# Tool design best practices are used here to maximize LLM understanding:
-# - clear tool name
-# - precise type hints
-# - capability-focused docstring
-# - explicit usage rules
-# - concrete examples
-# - safe implementation without eval()
+from app.tools import NarrationMeta
 
 
 Number = Union[int, float]
@@ -38,23 +29,17 @@ def _safe_eval_math_node(node: ast.AST) -> Number:
 
     if isinstance(node, ast.BinOp):
         operator_type = type(node.op)
-
         if operator_type not in ALLOWED_OPERATORS:
             raise ValueError(f"Unsupported operator: {operator_type.__name__}")
-
         left = _safe_eval_math_node(node.left)
         right = _safe_eval_math_node(node.right)
-
         return ALLOWED_OPERATORS[operator_type](left, right)
 
     if isinstance(node, ast.UnaryOp):
         operator_type = type(node.op)
-
         if operator_type not in ALLOWED_OPERATORS:
             raise ValueError(f"Unsupported operator: {operator_type.__name__}")
-
         operand = _safe_eval_math_node(node.operand)
-
         return ALLOWED_OPERATORS[operator_type](operand)
 
     raise ValueError(f"Invalid mathematical expression: {type(node).__name__}")
@@ -79,8 +64,6 @@ def calculate_math_expression(expression: str) -> str:
     - financial calculations
     - parenthesized multi-step calculations
 
-    This tool is intended for deterministic math, not for general reasoning.
-
     Supported operations:
     - addition: 2 + 2
     - subtraction: 10 - 3
@@ -94,34 +77,20 @@ def calculate_math_expression(expression: str) -> str:
 
     Input requirements:
     - Provide only the mathematical expression.
-    - Do not include natural language.
-    - Do not include currency symbols.
-    - Do not include units.
-    - Do not include commas as decimal separators.
-    - Use "." as the decimal separator.
-    - Use "*" for multiplication.
-    - Use "/" for division.
-    - Use "**" for powers.
+    - Do not include natural language, currency symbols, or units.
+    - Use "." as the decimal separator (not commas).
+    - Use "*" for multiplication, "/" for division, "**" for powers.
     - Do not use functions such as sqrt(), sin(), cos(), log(), or abs().
-    - Do not use variables such as x, y, price, or total.
+    - Do not use variables.
 
     Good inputs:
     - "25 * 4 + 10"
     - "(1000 * 0.15) + 300"
     - "((42 - 7) / 5) ** 2"
 
-    Bad inputs:
-    - "What is 25 times 4?"
-    - "$100 + $20"
-    - "10 reais + 5 reais"
-    - "10,5 + 2"
-    - "sqrt(16)"
-    - "price * 0.2"
-
     Returns:
     - The computed numeric result as a string.
     """
-
     expression = expression.strip()
 
     if not expression:

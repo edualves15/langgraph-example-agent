@@ -4,21 +4,8 @@ from typing import Literal, Optional
 
 from langchain_core.tools import tool
 
-from v2.tools import NarrationMeta
+from app.tools import NarrationMeta
 
-
-# Tool design best practices are used here to maximize LLM understanding:
-# - clear tool name
-# - precise type hints
-# - capability-focused docstring
-# - explicit usage rules
-# - concrete examples
-# - deterministic, dependency-free implementation
-
-
-# ---------------------------------------------------------------------------
-# Internal constants
-# ---------------------------------------------------------------------------
 
 _WEEKDAY_NAMES_EN = {
     0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday",
@@ -42,7 +29,6 @@ _MONTH_NAMES_PT = {
     9: "setembro", 10: "outubro", 11: "novembro", 12: "dezembro",
 }
 
-# Accepts English, Portuguese, and common abbreviations
 _WEEKDAY_ALIASES: dict[str, int] = {
     "monday": 0, "mon": 0, "segunda": 0, "segunda-feira": 0,
     "tuesday": 1, "tue": 1, "terça": 1, "terca": 1, "terça-feira": 1, "terca-feira": 1,
@@ -54,18 +40,7 @@ _WEEKDAY_ALIASES: dict[str, int] = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
 def _parse_date(value: str) -> date:
-    """
-    Parse a date string.
-
-    Accepts:
-    - "today" or "hoje" → current date
-    - "YYYY-MM-DD"      → ISO 8601 format
-    """
     v = value.strip().lower()
     if v in ("today", "hoje"):
         return date.today()
@@ -79,7 +54,6 @@ def _parse_date(value: str) -> date:
 
 
 def _parse_weekday(value: str) -> int:
-    """Return 0–6 (Mon–Sun) from a weekday name string. Raises ValueError on unknown input."""
     key = value.strip().lower()
     if key not in _WEEKDAY_ALIASES:
         raise ValueError(
@@ -104,10 +78,7 @@ def _quarter_end(d: date) -> date:
     return date(d.year, last_month, calendar.monthrange(d.year, last_month)[1])
 
 
-def _count_business_days_range(
-    start: date, end: date, holidays: set[date]
-) -> int:
-    """Count Mon–Fri days between start and end (inclusive), excluding holidays."""
+def _count_business_days_range(start: date, end: date, holidays: set[date]) -> int:
     count = 0
     current = start
     while current <= end:
@@ -118,7 +89,6 @@ def _count_business_days_range(
 
 
 def _full_date_info(d: date) -> dict:
-    """Return a comprehensive descriptor dict for a given date."""
     yr, mo, day = d.year, d.month, d.day
     weekday_num = d.weekday()
     days_in_month = calendar.monthrange(yr, mo)[1]
@@ -135,28 +105,23 @@ def _full_date_info(d: date) -> dict:
     year_end = date(yr, 12, 31)
 
     return {
-        # Formatted representations
         "iso": d.isoformat(),
         "formatted_br": d.strftime("%d/%m/%Y"),
         "formatted_us": d.strftime("%m/%d/%Y"),
         "formatted_long_pt": f"{day} de {_MONTH_NAMES_PT[mo]} de {yr}",
         "formatted_long_en": f"{_MONTH_NAMES_EN[mo]} {day}, {yr}",
-        # Date components
         "day": day,
         "month": mo,
         "year": yr,
         "month_name_en": _MONTH_NAMES_EN[mo],
         "month_name_pt": _MONTH_NAMES_PT[mo],
-        # Weekday
-        "weekday_number": weekday_num,          # 0 = Monday, 6 = Sunday
+        "weekday_number": weekday_num,
         "weekday_name_en": _WEEKDAY_NAMES_EN[weekday_num],
         "weekday_name_pt": _WEEKDAY_NAMES_PT[weekday_num],
         "is_weekday": weekday_num < 5,
         "is_weekend": weekday_num >= 5,
-        # ISO week
         "iso_week_number": iso_week,
         "iso_week_year": iso_year,
-        # Position within year/month
         "day_of_year": day_of_year,
         "days_in_year": days_in_year,
         "days_elapsed_in_year": day_of_year,
@@ -165,27 +130,19 @@ def _full_date_info(d: date) -> dict:
         "days_remaining_in_month": days_in_month - day,
         "is_last_day_of_month": day == days_in_month,
         "is_first_day_of_month": day == 1,
-        # Year traits
         "is_leap_year": is_leap,
-        # Quarter
         "quarter": q,
         "quarter_label": f"Q{q} {yr}",
         "quarter_start": q_start.isoformat(),
         "quarter_end": q_end.isoformat(),
         "days_remaining_in_quarter": (q_end - d).days,
-        # Boundary dates
         "month_start": month_start.isoformat(),
         "month_end": month_end.isoformat(),
         "year_start": year_start.isoformat(),
         "year_end": year_end.isoformat(),
-        # Unix
         "unix_timestamp": int((d - date(1970, 1, 1)).total_seconds()),
     }
 
-
-# ---------------------------------------------------------------------------
-# Tools
-# ---------------------------------------------------------------------------
 
 @tool
 def get_today_info() -> dict:
@@ -281,24 +238,12 @@ def calculate_date_difference(start_date: str, end_date: str) -> dict:
     The "direction" field tells you whether end_date is in the past or future
     relative to today.
 
-    Good inputs:
-    - start_date="1990-06-15", end_date="today"   → age calculation
-    - start_date="2025-01-01", end_date="2025-12-31"  → days in a year
-    - start_date="today", end_date="2025-08-10"   → days until a deadline
-
     Returns a dict with:
     - start, end: ISO dates (reordered so start <= end)
-    - total_days: exact calendar days (exclusive of both boundaries)
-    - total_days_inclusive: total_days + 1 (both boundaries counted)
-    - complete_weeks: whole 7-day weeks in the span
-    - remaining_days_after_weeks: leftover days (0–6)
-    - complete_months: whole calendar months in the span
-    - complete_years: whole calendar years in the span
-    - remaining_months_after_years: leftover months after extracting years
-    - remaining_days_after_years_months: leftover days after extracting years and months
-    - approximate_months: float approximation (total_days / 30.44)
+    - total_days: exact calendar days
+    - complete_weeks, complete_months, complete_years: whole-unit spans
     - business_days: Mon–Fri day count (no holiday adjustment)
-    - direction: "past" | "future" | "today" — end's relation to today
+    - direction: "past" | "future" | "today"
     - is_same_date: true if start == end
     """
     start = _parse_date(start_date)
@@ -308,15 +253,12 @@ def calculate_date_difference(start_date: str, end_date: str) -> dict:
     total_days = (later - earlier).days
     complete_weeks, remaining_days_after_weeks = divmod(total_days, 7)
 
-    # Calendar-accurate years / months / days decomposition
     years = later.year - earlier.year
     months = later.month - earlier.month
     days_r = later.day - earlier.day
 
     if days_r < 0:
         months -= 1
-        prev_month = earlier.month + months  # month just before 'later' in the span
-        # Move back to get the right anchor
         anchor_year = later.year if later.month > 1 else later.year - 1
         anchor_month = (later.month - 2) % 12 + 1
         days_r += calendar.monthrange(anchor_year, anchor_month)[1]
@@ -327,7 +269,6 @@ def calculate_date_difference(start_date: str, end_date: str) -> dict:
 
     complete_months_total = years * 12 + months
     approximate_months = round(total_days / 30.4375, 2)
-
     bdays = _count_business_days_range(earlier, later, set())
 
     today = date.today()
@@ -370,40 +311,24 @@ def shift_date(
     - What was the date N days / months ago?
     - When will it be N months from today?
     - What is the deadline if I add N weeks to a date?
-    - What is the same day next year / last year?
-    - What date is N years before X?
 
     Input:
-    - base_date: the starting date in YYYY-MM-DD format, or "today".
-    - amount: integer. Positive → move forward. Negative → move backward.
+    - base_date: YYYY-MM-DD or "today".
+    - amount: integer. Positive → forward. Negative → backward.
     - unit: one of "days", "weeks", "months", "years".
-
-    Month/year arithmetic clamps to the last valid day when needed
-    (e.g., January 31 + 1 month → February 28 or 29).
-
-    Good inputs:
-    - base_date="today", amount=30, unit="days"      → 30 days from today
-    - base_date="2025-01-31", amount=1, unit="months" → 2025-02-28
-    - base_date="today", amount=-6, unit="months"     → 6 months ago
-    - base_date="2024-02-29", amount=1, unit="years"  → 2025-02-28
 
     Returns a dict with:
     - base: original date ISO
-    - amount_applied: the amount used (may be negative)
-    - unit: the unit used
-    - direction: "forward" or "backward"
     - result: resulting date ISO
-    - result_details: full date info dict for the result (same as get_date_details)
+    - result_details: full date info dict for the result
     - calendar_days_elapsed: absolute calendar days between base and result
     """
     base = _parse_date(base_date)
 
     if unit == "days":
         result = base + timedelta(days=amount)
-
     elif unit == "weeks":
         result = base + timedelta(weeks=amount)
-
     elif unit == "months":
         new_month = base.month + amount
         years_delta = (new_month - 1) // 12
@@ -411,16 +336,12 @@ def shift_date(
         new_year = base.year + years_delta
         max_day = calendar.monthrange(new_year, new_month)[1]
         result = date(new_year, new_month, min(base.day, max_day))
-
     elif unit == "years":
         new_year = base.year + amount
         max_day = calendar.monthrange(new_year, base.month)[1]
         result = date(new_year, base.month, min(base.day, max_day))
-
     else:
-        raise ValueError(
-            f"Invalid unit: '{unit}'. Must be 'days', 'weeks', 'months', or 'years'."
-        )
+        raise ValueError(f"Invalid unit: '{unit}'. Must be 'days', 'weeks', 'months', or 'years'.")
 
     return {
         "base": base.isoformat(),
@@ -446,27 +367,16 @@ def count_business_days(
     - How many working days are there between X and Y?
     - How many business days until a deadline?
     - How many weekdays are there in this month?
-    - Count work days between two dates, skipping holidays.
 
     Input:
     - start_date: YYYY-MM-DD or "today" (inclusive).
     - end_date: YYYY-MM-DD or "today" (inclusive).
-    - holidays: optional list of ISO date strings (YYYY-MM-DD) to treat as non-working days.
-      Example: ["2025-01-01", "2025-04-18"]
-
-    Order does not matter.
-
-    Good inputs:
-    - start_date="2025-01-01", end_date="2025-01-31"
-    - start_date="today", end_date="2025-12-31", holidays=["2025-12-25"]
+    - holidays: optional list of ISO date strings (YYYY-MM-DD) to exclude.
 
     Returns a dict with:
-    - start, end: ISO boundary dates (reordered so start <= end)
-    - total_calendar_days: total days inclusive (end - start + 1)
     - business_days: Mon–Fri days, excluding provided holidays
     - weekend_days: Saturday + Sunday count in the span
     - holidays_in_range: how many provided holidays fell within the range
-    - excluded_holidays: list of holiday ISO dates that were inside the range
     """
     start = _parse_date(start_date)
     end = _parse_date(end_date)
@@ -478,7 +388,7 @@ def count_business_days(
             try:
                 parsed_holidays.add(_parse_date(h))
             except ValueError:
-                pass  # skip invalid entries silently
+                pass
 
     total_calendar = (later - earlier).days + 1
     weekend_count = 0
@@ -519,28 +429,17 @@ def add_business_days(
     Use this tool when the user asks:
     - What date is 10 business days from today?
     - When is the delivery deadline if it's N working days from date X?
-    - What date falls N weekdays after a given date?
     - What was the date N business days ago?
-
-    This is different from count_business_days, which counts days in a range.
-    This tool finds the target date given a count.
 
     Input:
     - start_date: YYYY-MM-DD or "today".
     - business_days: number of business days to advance. Negative = go backward.
-    - holidays: optional list of ISO date strings to skip (YYYY-MM-DD).
-
-    Good inputs:
-    - start_date="today", business_days=10
-    - start_date="2025-06-01", business_days=-5, holidays=["2025-05-29"]
+    - holidays: optional list of ISO date strings to skip.
 
     Returns a dict with:
-    - start: the starting ISO date
-    - business_days_requested: the N provided
     - result: the resulting ISO date
     - result_details: full date info for the result
     - calendar_days_elapsed: absolute calendar days between start and result
-    - direction: "forward" or "backward"
     """
     start = _parse_date(start_date)
 
@@ -585,31 +484,18 @@ def find_next_weekday(
     - What is the next Monday after date X?
     - What was the last Friday before today?
     - When is the coming Saturday?
-    - Find the previous Thursday relative to a date.
-    - What is the nearest upcoming Tuesday?
 
     Input:
     - reference_date: YYYY-MM-DD or "today".
-    - weekday: name of the target day (case-insensitive).
-      Accepted values (English): monday, tuesday, wednesday, thursday, friday, saturday, sunday
-      Accepted values (Portuguese): segunda, terça, quarta, quinta, sexta, sábado, domingo
-      Accepted abbreviations: mon, tue, wed, thu, fri, sat, sun
-    - direction: "next" (default, look forward) or "previous" (look backward).
+    - weekday: name of the target day (case-insensitive, EN or PT).
+    - direction: "next" (default) or "previous".
     - include_reference: if True, the reference date itself can be returned when
-      it already falls on the requested weekday. Default is False (always moves
-      at least 1 day away).
-
-    Good inputs:
-    - reference_date="today", weekday="friday"
-    - reference_date="2025-03-10", weekday="segunda", direction="previous"
+      it already falls on the requested weekday.
 
     Returns a dict with:
-    - reference: input reference date ISO
-    - weekday_requested: canonical English name of the requested weekday
     - result: ISO date of the found occurrence
     - result_details: full date info for the result
     - days_from_reference: number of calendar days between reference and result
-    - direction: "next" or "previous"
     """
     ref = _parse_date(reference_date)
     target_weekday = _parse_weekday(weekday)
@@ -619,7 +505,7 @@ def find_next_weekday(
         if delta == 0 and not include_reference:
             delta = 7
         result = ref + timedelta(days=delta)
-    else:  # "previous"
+    else:
         delta = (ref.weekday() - target_weekday) % 7
         if delta == 0 and not include_reference:
             delta = 7
@@ -649,29 +535,19 @@ def list_dates_in_range(
     - List all Mondays in March 2025.
     - How many Fridays are there between X and Y?
     - Give me all weekdays in a date range.
-    - List every Saturday and Sunday in a range.
     - How many times does a specific weekday appear in a month?
 
     Input:
     - start_date: YYYY-MM-DD or "today" (inclusive).
     - end_date: YYYY-MM-DD or "today" (inclusive).
     - filter_weekdays: optional list of weekday names to include exclusively.
-      Accepts English, Portuguese, or abbreviations (same as find_next_weekday).
-      Example: ["monday", "friday"] or ["segunda", "sexta"]
-    - only_business_days: if True, return only Mon–Fri dates (overrides filter_weekdays).
+    - only_business_days: if True, return only Mon–Fri dates.
 
-    Note: to avoid excessively large results, ranges over 2 years (730 days) are rejected.
-
-    Good inputs:
-    - start_date="2025-03-01", end_date="2025-03-31", filter_weekdays=["monday"]
-    - start_date="today", end_date="2025-12-31", only_business_days=True
+    Note: ranges over 2 years (730 days) are rejected.
 
     Returns a dict with:
-    - start, end: ISO boundary dates
-    - total_calendar_days: total days in the range (inclusive)
     - dates: list of ISO date strings matching the filter
     - count: number of matching dates
-    - filter_applied: description of the filter used
     """
     start = _parse_date(start_date)
     end = _parse_date(end_date)
@@ -715,7 +591,7 @@ def list_dates_in_range(
 
 
 # ---------------------------------------------------------------------------
-# NarrationMeta (metadados visuais para o sistema de narracao)
+# NarrationMeta
 # ---------------------------------------------------------------------------
 
 object.__setattr__(get_today_info, "narration", NarrationMeta(

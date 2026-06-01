@@ -9,7 +9,7 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
-def route_after_agent(state: AgentState) -> str:
+def should_continue(state: AgentState) -> str:
     messages = state["messages"]
     if not messages:
         return END

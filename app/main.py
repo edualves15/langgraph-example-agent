@@ -9,7 +9,6 @@ from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import BaseModel, Field
 
 from app.exceptions import AgentRuntimeError, ProviderAuthError, QuotaExceededError
-from app.mcp.client import shutdown_mcp_client
 from app.services.agent_service import AgentService
 
 # Uvicorn configura apenas seus próprios loggers (uvicorn.*) e não toca no root.
@@ -30,7 +29,6 @@ def get_agent_service() -> AgentService:
 async def lifespan(app: FastAPI):
     await agent_service.warmup()
     yield
-    await shutdown_mcp_client()
 
 
 app = FastAPI(title="LangGraph Private Agent",

@@ -2,24 +2,24 @@
 Consumer de terminal para NarrationEvent.
 
 Renderiza eventos canonicos com formatacao visual para desenvolvimento local.
-O encoding e tratado pelo _safe_print / _asciify de v2/main.py.
 """
 
 from __future__ import annotations
 
 import sys
 import unicodedata
-from typing import Callable
 
-from v2.narration.events import NarrationEvent
+from app.narration.events import NarrationEvent
 
 # ---------------------------------------------------------------------------
-# Encoding (replicado aqui para o consumer ser autossuficiente)
+# Encoding
 # ---------------------------------------------------------------------------
 
 _ICON_FALLBACK: dict[str, str] = {
     "📅": "[cal]",
     "🔢": "[mat]",
+    "🔍": "[srch]",
+    "📄": "[doc]",
 }
 
 
@@ -66,21 +66,7 @@ def _safe_icon(icon: str) -> str:
 
 
 def render_event(event: NarrationEvent) -> None:
-    """Renderiza um NarrationEvent no terminal com formatacao visual.
-
-    Mapeamento:
-        run_started      → "========== Iniciando =========="
-        run_finished     → "========== Concluido =========="
-        step_started     → "  --- {text} ---"
-        step_finished    → (silencioso)
-        tool_call/start  → "  >  {icon} {text}"
-        tool_result      → "  ✓  {icon} {text}"
-        block_start       → (silencioso — ja anunciado)
-        block_delta       → (silencioso — progresso interno)
-        block_stop        → (silencioso — tool_result cobre)
-        text_delta        → (tratado separadamente no streaming)
-        error            → "  ✗  {icon} {text}: {error}"
-    """
+    """Renderiza um NarrationEvent no terminal com formatacao visual."""
     etype = event.type
     stage = event.stage
     text = event.text
@@ -93,10 +79,7 @@ def render_event(event: NarrationEvent) -> None:
     elif etype == "run_finished":
         _safe_print("=" * 60 + "\n")
 
-    elif etype == "step_started":
-        pass  # terminal nao renderiza step labels
-
-    elif etype == "step_finished":
+    elif etype in ("step_started", "step_finished"):
         pass
 
     elif etype == "reasoning_started":
@@ -104,10 +87,9 @@ def render_event(event: NarrationEvent) -> None:
         _safe_print(f"  >  {p}{text}")
 
     elif etype == "reasoning_end":
-        pass  # silencioso — fim da fase de raciocinio
+        pass
 
     elif etype == "tool_call" and stage == "start":
-        # Anuncio pre-execucao (agent_node)
         _safe_print(f"  >  {prefix}{text}")
 
     elif etype == "tool_result":
@@ -118,7 +100,4 @@ def render_event(event: NarrationEvent) -> None:
         _safe_print(f"  ✗  {prefix}{text}: {err}")
 
     elif etype == "tool_call" and stage == "stop":
-        pass  # tool_result ja cobre o resultado
-
-    # block_start / block_delta / block_stop sao silenciosos no terminal
-    # — existem para o front-end rastrear progresso interno
+        pass

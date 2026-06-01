@@ -1,21 +1,21 @@
 """
-Registro de tools e metadados de narracao.
+Metadados de narracao para tools.
 
 Fornece NarrationMeta (schema tipado para metadados visuais das tools),
-helpers de formatacao, e a lista ALL_TOOLS usada pelo grafo.
+helpers de formatacao, e get_tool_narration para extrair metadados.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
+
 # ---------------------------------------------------------------------------
-# NarrationMeta
+# Humanize helpers (PT)
 # ---------------------------------------------------------------------------
 
-# Traducao de args para PT (reusada na formatacao de labels)
 _WEEKDAY_PT: dict[str, str] = {
     "monday": "segunda-feira",
     "tuesday": "terça-feira",
@@ -43,6 +43,10 @@ def _humanize(value: Any) -> Any:
     return _WEEKDAY_PT.get(v) or _DIRECTION_PT.get(v) or _UNIT_PT.get(v) or value
 
 
+# ---------------------------------------------------------------------------
+# NarrationMeta
+# ---------------------------------------------------------------------------
+
 @dataclass(slots=True)
 class NarrationMeta:
     """Metadados visuais de uma tool para o sistema de narracao.
@@ -66,11 +70,10 @@ class NarrationMeta:
 
 def get_tool_narration(tool) -> NarrationMeta:
     """Extrai NarrationMeta de uma tool, com fallback para metadata antigo."""
-    # Prefere .narration (novo)
     if hasattr(tool, "narration") and isinstance(tool.narration, NarrationMeta):
         return tool.narration
 
-    # Fallback para .metadata (antigo) — converte on-the-fly
+    # Fallback para .metadata (LangChain BaseTool) — converte on-the-fly
     meta = getattr(tool, "metadata", {}) or {}
     if meta:
         return NarrationMeta(
@@ -81,7 +84,6 @@ def get_tool_narration(tool) -> NarrationMeta:
             level=2,
         )
 
-    # Fallback final
     return NarrationMeta(
         announce_template=getattr(tool, "name", "unknown"),
         done_label="",
@@ -89,12 +91,12 @@ def get_tool_narration(tool) -> NarrationMeta:
     )
 
 
-def format_narration_label(meta: NarrationMeta, tool_call: dict) -> str:
-    """Resolve o label de progresso a partir do NarrationMeta e args da tool call.
-
-    Preenche defaults da assinatura da tool para argumentos omitidos pelo LLM,
-    garantindo que o template sempre resolva completamente.
-    """
+def format_narration_label(
+    meta: NarrationMeta,
+    tool_call: dict,
+    tools_by_name: dict | None = None,
+) -> str:
+    """Resolve o label de progresso a partir do NarrationMeta e args da tool call."""
     import inspect
     import re
 
@@ -102,49 +104,18 @@ def format_narration_label(meta: NarrationMeta, tool_call: dict) -> str:
     args = {k: _humanize(v) for k, v in tool_call.get("args", {}).items()}
 
     # Pre-fill defaults from tool function signature (args omitidos pelo LLM)
-    tool = TOOLS_BY_NAME.get(tool_call.get("name"))
-    if tool is not None:
-        try:
-            sig = inspect.signature(tool.func)
-            for name, param in sig.parameters.items():
-                if name not in args and param.default is not inspect.Parameter.empty:
-                    args[name] = _humanize(param.default)
-        except Exception:
-            pass
+    if tools_by_name:
+        tool = tools_by_name.get(tool_call.get("name"))
+        if tool is not None:
+            try:
+                sig = inspect.signature(tool.func)
+                for name, param in sig.parameters.items():
+                    if name not in args and param.default is not inspect.Parameter.empty:
+                        args[name] = _humanize(param.default)
+            except Exception:
+                pass
 
     try:
         return template.format(**args)
     except (KeyError, ValueError):
-        # Fallback: substitui apenas as chaves presentes, remove ausentes
         return re.sub(r"\{(\w+)\}", lambda m: str(args.get(m.group(1), "")), template).strip()
-
-
-# ---------------------------------------------------------------------------
-# Registry
-# ---------------------------------------------------------------------------
-
-from v2.tools.calendar_tools import (
-    add_business_days,
-    calculate_date_difference,
-    count_business_days,
-    find_next_weekday,
-    get_date_details,
-    get_today_info,
-    list_dates_in_range,
-    shift_date,
-)
-from v2.tools.math_tools import calculate_math_expression
-
-ALL_TOOLS = [
-    calculate_math_expression,
-    get_today_info,
-    get_date_details,
-    calculate_date_difference,
-    shift_date,
-    count_business_days,
-    add_business_days,
-    find_next_weekday,
-    list_dates_in_range,
-]
-
-TOOLS_BY_NAME = {t.name: t for t in ALL_TOOLS}
