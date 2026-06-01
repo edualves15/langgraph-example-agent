@@ -94,10 +94,17 @@ def render_event(event: NarrationEvent) -> None:
         _safe_print("=" * 60 + "\n")
 
     elif etype == "step_started":
-        _safe_print(f"\n  --- {text} ---")
+        pass  # terminal nao renderiza step labels
 
     elif etype == "step_finished":
-        pass  # silencioso
+        pass
+
+    elif etype == "reasoning_started":
+        p = prefix if prefix else "💭 "
+        _safe_print(f"  >  {p}{text}")
+
+    elif etype == "reasoning_stop":
+        pass
 
     elif etype == "tool_call" and stage == "start":
         # Anuncio pre-execucao (agent_node)

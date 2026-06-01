@@ -27,6 +27,8 @@ EventType = Literal[
     "run_finished",
     "step_started",
     "step_finished",
+    "reasoning_started",
+    "reasoning_stop",
     "block_start",
     "block_delta",
     "block_stop",

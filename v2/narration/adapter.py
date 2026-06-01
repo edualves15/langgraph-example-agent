@@ -108,7 +108,26 @@ class NarrationAdapter:
             return self._handle_tool_done(data)
         elif event_type == "tool_error":
             return self._handle_tool_error(data)
+        elif event_type == "reasoning_started":
+            return self._handle_reasoning_started(data)
+        elif event_type == "reasoning_stop":
+            return self._handle_reasoning_stop(data)
         return None
+
+    def _handle_reasoning_started(self, data: dict) -> NarrationEvent:
+        return NarrationEvent(
+            type="reasoning_started",
+            stage="start",
+            text=data.get("text", ""),
+            level=data.get("level", 1),
+        )
+
+    def _handle_reasoning_stop(self, data: dict) -> NarrationEvent:
+        return NarrationEvent(
+            type="reasoning_stop",
+            stage="stop",
+            level=data.get("level", 1),
+        )
 
     def _handle_step_started(self, data: dict) -> NarrationEvent:
         self._current_step_id = new_block_id()

@@ -113,21 +113,37 @@ def _serialize_tool_result(result) -> str:
 # =========================================================
 
 async def agent_node(state: State, writer: StreamWriter) -> dict:
-    """Chama o LLM e anuncia as tool calls antes da execucao."""
-    has_tool_results = any(isinstance(m, ToolMessage) for m in state["messages"])
+    """Chama o LLM e gera narracao semantica em duas fases.
 
-    # Evento semantico de narracao: fase de pensamento
+    Fase 1 — Reasoning: emitida DURANTE a chamada LLM (futuro front-end
+             usa para spinner/indicador de "pensando...").
+    Fase 2 — Tool calls: anunciadas APOS a resposta, com labels descritivos
+             baseados no que o LLM decidiu fazer.
+    """
+
+    # --- Fase 1: Reasoning (durante a chamada LLM) ---
+    reasoning_text = (
+        "Processando informacoes..." if any(
+            isinstance(m, ToolMessage) for m in state["messages"]
+        )
+        else "Analisando sua pergunta..."
+    )
     writer({
         "type": "narration",
-        "event": "step_started",
-        "text": "Organizando a resposta" if has_tool_results else "Interpretando sua pergunta",
+        "event": "reasoning_started",
+        "text": reasoning_text,
+        "icon": "💭",
         "level": 1,
     })
 
     response = await llm_with_tools.ainvoke(state["messages"])
 
-    # Anuncia cada tool call ANTES da execucao (UX imediato no front-end)
-    for tc in getattr(response, "tool_calls", []):
+    writer({"type": "narration", "event": "reasoning_stop", "level": 1})
+
+    # --- Fase 2: Anuncia cada tool call (ou silencioso se for resposta final) ---
+    tool_calls = getattr(response, "tool_calls", [])
+
+    for tc in tool_calls:
         meta = get_tool_narration(TOOLS_BY_NAME.get(tc["name"]))
         writer({
             "type": "narration",
