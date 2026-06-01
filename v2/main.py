@@ -1,370 +1,244 @@
-from typing import TypedDict, Annotated
-import operator
+import asyncio
+import json
 import os
+import sys
+import unicodedata
+from typing import Annotated, TypedDict
+import operator
 
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.graph import StateGraph, START, END
+from langgraph.graph import END, START, StateGraph
+from langgraph.types import StreamWriter
 
 load_dotenv()
 
-# Importa tools
-from tools.math_tools import calculate_math_expression
-from tools.calendar_tools import (
-    get_today_info,
-    get_date_details,
-    calculate_date_difference,
-    shift_date,
-    count_business_days,
-    add_business_days,
-    find_next_weekday,
-    list_dates_in_range,
+from v2.tools import (
+    ALL_TOOLS,
+    TOOLS_BY_NAME,
+    format_narration_label,
+    get_tool_narration,
 )
+from v2.narration import NarrationAdapter, render_event
 
 
 # =========================================================
-# 1. Definir estado
+# Encoding — tenta UTF-8 no terminal; fallback ASCII com
+# transliteracao de acentos (ex: "c" -> "c", "a" -> "a").
 # =========================================================
 
-# Define o formato do estado global compartilhado
-# entre todos os nós do grafo
+def _setup_encoding() -> None:
+    """Reconfigura stdout para UTF-8 se possivel (Windows cp1252 -> 65001)."""
+    if sys.platform != "win32":
+        return
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            return
+        except Exception:
+            pass
+    try:
+        import ctypes
+        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+    except Exception:
+        pass
+
+
+_setup_encoding()
+
+
+def _asciify(text: str) -> str:
+    """Remove acentos preservando legibilidade: "informacao" -> "informacao"."""
+    if not text:
+        return text
+    try:
+        text.encode(sys.stdout.encoding)
+        return text
+    except (UnicodeEncodeError, LookupError):
+        pass
+    nfkd = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in nfkd if not unicodedata.combining(c))
+
+
+def _safe_print(*args, **kwargs) -> None:
+    """print() resiliente a qualquer encoding de terminal."""
+    cleaned = [_asciify(a) if isinstance(a, str) else a for a in args]
+    try:
+        print(*cleaned, **kwargs)
+    except UnicodeEncodeError:
+        ascii_args = [
+            a.encode("ascii", errors="replace").decode("ascii") if isinstance(a, str) else a
+            for a in cleaned
+        ]
+        print(*ascii_args, **kwargs)
+
+
+# =========================================================
+# Estado
+# =========================================================
+
 class State(TypedDict):
-
-    # Lista de mensagens do agente
-    #
-    # operator.add diz ao LangGraph para concatenar
-    # novas mensagens ao invés de sobrescrever
     messages: Annotated[list, operator.add]
 
 
 # =========================================================
-# 2. Configurar LLM com tools
+# LLM
 # =========================================================
 
-# Cria instância do modelo
 llm = ChatGoogleGenerativeAI(
     model=os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite"),
     google_api_key=os.getenv("GEMINI_API_KEY"),
     temperature=0,
 )
 
-# Entrega as tools ao modelo
-# para permitir tool calling automático
-llm_with_tools = llm.bind_tools([
-    calculate_math_expression,
-    get_today_info,
-    get_date_details,
-    calculate_date_difference,
-    shift_date,
-    count_business_days,
-    add_business_days,
-    find_next_weekday,
-    list_dates_in_range,
-])
-
-# Mapa para localizar tools pelo nome
-# retornado pelo LLM
-tools_by_name = {
-    "calculate_math_expression": calculate_math_expression,
-    "get_today_info": get_today_info,
-    "get_date_details": get_date_details,
-    "calculate_date_difference": calculate_date_difference,
-    "shift_date": shift_date,
-    "count_business_days": count_business_days,
-    "add_business_days": add_business_days,
-    "find_next_weekday": find_next_weekday,
-    "list_dates_in_range": list_dates_in_range,
-}
+llm_with_tools = llm.bind_tools(ALL_TOOLS)
 
 
 # =========================================================
-# Nó principal do agente
+# Helpers
 # =========================================================
 
-def agent_node(state: State):
-
-    # Envia histórico completo ao LLM
-    response = llm_with_tools.invoke(
-        state["messages"]
-    )
-
-    # Retorna nova mensagem para atualizar estado
-    return {
-        "messages": [response]
-    }
+def _serialize_tool_result(result) -> str:
+    """Converte resultado de tool para string (para ToolMessage.content)."""
+    if isinstance(result, str):
+        return result
+    if isinstance(result, (dict, list)):
+        return json.dumps(result, ensure_ascii=False, default=str)
+    return str(result)
 
 
 # =========================================================
-# Nó executor de ferramentas
+# Nos do grafo
 # =========================================================
 
-def tool_node(state: State):
+async def agent_node(state: State, writer: StreamWriter) -> dict:
+    """Chama o LLM e anuncia as tool calls antes da execucao."""
+    has_tool_results = any(isinstance(m, ToolMessage) for m in state["messages"])
 
-    # Pega última mensagem do estado
+    # Evento semantico de narracao: fase de pensamento
+    writer({
+        "type": "narration",
+        "event": "step_started",
+        "text": "Organizando a resposta" if has_tool_results else "Interpretando sua pergunta",
+        "level": 1,
+    })
+
+    response = await llm_with_tools.ainvoke(state["messages"])
+
+    # Anuncia cada tool call ANTES da execucao (UX imediato no front-end)
+    for tc in getattr(response, "tool_calls", []):
+        meta = get_tool_narration(TOOLS_BY_NAME.get(tc["name"]))
+        writer({
+            "type": "narration",
+            "event": "tool_call",
+            "tool_name": tc["name"],
+            "tool_call_id": tc["id"],
+            "text": format_narration_label(meta, tc),
+            "icon": meta.icon,
+            "args": tc.get("args", {}),
+            "level": meta.level,
+        })
+
+    return {"messages": [response]}
+
+
+async def tool_node(state: State, writer: StreamWriter) -> dict:
+    """Executa as tool calls e emite eventos de conclusao ou erro."""
     last_message = state["messages"][-1]
-
     outputs = []
 
-    # Itera sobre tool calls solicitadas pelo LLM
     for tool_call in last_message.tool_calls:
-
-        # Obtém nome da tool
         tool_name = tool_call["name"]
+        tool_call_id = tool_call["id"]
+        tool = TOOLS_BY_NAME[tool_name]
+        meta = get_tool_narration(tool)
 
-        # Localiza tool correta
-        tool = tools_by_name[tool_name]
+        try:
+            result = await tool.ainvoke(tool_call["args"])
+            writer({
+                "type": "narration",
+                "event": "tool_result",
+                "tool": tool_name,
+                "tool_call_id": tool_call_id,
+                "text": meta.done_label or f"{tool_name} concluido",
+                "icon": meta.icon,
+            })
+        except Exception as exc:
+            result = f"Erro: {exc}"
+            writer({
+                "type": "narration",
+                "event": "tool_error",
+                "tool": tool_name,
+                "tool_call_id": tool_call_id,
+                "text": meta.error_label or f"{tool_name} falhou",
+                "icon": meta.icon,
+                "error": str(exc),
+            })
 
-        # Emite mensagem de progresso dinâmica usando os args reais
-        # Tenta formatar o template com os args; cai no label estático se falhar
-        if tool.metadata:
-            template = tool.metadata.get("step_label_template")
-            if template:
-                try:
-                    step_label = template.format(**tool_call["args"])
-                except KeyError:
-                    step_label = tool.metadata.get("step_label", tool_name)
-            else:
-                step_label = tool.metadata.get("step_label", tool_name)
-            icon = tool.metadata.get("step_icon", "")
-        else:
-            step_label = tool_name
-            icon = ""
-        print(f"{icon} {step_label}" if icon else step_label)
-
-        # Executa tool com argumentos enviados pelo LLM
-        result = tool.invoke(
-            tool_call["args"],
-        )
-
-        # Cria mensagem de resposta da tool
         outputs.append(
             ToolMessage(
-                content=result,
+                content=_serialize_tool_result(result),
                 name=tool_name,
-                tool_call_id=tool_call["id"],
+                tool_call_id=tool_call_id,
             )
         )
 
-    # Retorna outputs para atualizar estado
-    return {
-        "messages": outputs
-    }
+    return {"messages": outputs}
+
+
+def should_continue(state: State) -> str:
+    last = state["messages"][-1]
+    return "tools" if getattr(last, "tool_calls", None) else END
 
 
 # =========================================================
-# Função de roteamento do grafo
+# Grafo
 # =========================================================
 
-def should_continue(state: State):
-
-    # Obtém última mensagem
-    last_message = state["messages"][-1]
-
-    # Se o modelo solicitou tools
-    # então vai para o nó tools
-    if getattr(last_message, "tool_calls", None):
-        return "tools"
-
-    # Caso contrário encerra o grafo
-    return END
-
-
-# =========================================================
-# 3. Criar grafo
-# =========================================================
-
-# Cria blueprint do grafo usando schema State
 builder = StateGraph(State)
+builder.add_node("agent", agent_node)
+builder.add_node("tools", tool_node)
+builder.add_edge(START, "agent")
+builder.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
+builder.add_edge("tools", "agent")
 
-
-# =========================================================
-# 4. Adicionar nós
-# =========================================================
-
-# Registra nó do agente
-builder.add_node(
-    "agent",
-    agent_node
-)
-
-# Registra nó de tools
-builder.add_node(
-    "tools",
-    tool_node
-)
-
-
-# =========================================================
-# 5. Definir arestas / transições
-# =========================================================
-
-# Fluxo inicial:
-# START -> agent
-builder.add_edge(
-    START,
-    "agent"
-)
-
-# Define roteamento condicional
-builder.add_conditional_edges(
-    "agent",
-    should_continue,
-    {
-        # Se houver tool calls
-        "tools": "tools",
-
-        # Caso contrário encerra
-        END: END,
-    },
-)
-
-# Cria loop:
-# tools -> agent
-builder.add_edge(
-    "tools",
-    "agent"
-)
-
-
-# =========================================================
-# 6. Compilar
-# =========================================================
-
-# Valida e transforma o blueprint
-# em runtime executável
 graph = builder.compile()
 
 
 # =========================================================
-# 7. Executar
+# Execucao
 # =========================================================
 
-# Estado inicial da execução
-initial_state = {
-    "messages": [
-        HumanMessage(
-            # Exemplos de prompts para testar ferramentas individuais:
-            # content="Quanto é ((42 - 7) / 5) ** 2?"         → calculate_math_expression
-            # content="Que dia foi ontem?"                     → shift_date
-            # content="Que dia da semana é 25/12/2026?"        → get_date_details
-            # content="Quantos dias úteis até 31/12/2026?"     → count_business_days
-            # content="Qual é a próxima segunda-feira?"        → find_next_weekday
-            # content="Quais são todas as sextas de junho/2026?" → list_dates_in_range
-            #
-            # Prompt multi-tool: força múltiplas tools no mesmo loop
-            content=(
-                "Daqui a exatamente 100 dias úteis, que data será? "
-                "E qual é o dia da semana dessa data? "
-                "Além disso, quantos dias corridos existem entre hoje e essa data?"
-                "Qual é a próxima sexta-feira? "
-                "E quantas sextas-feiras ainda existem em 2026 a partir de hoje? "
-                "Além disso, quanto é (52 * 5) + 3?"
-                "Que dia da semana foi o Natal do ano retrasado?"
-                "Quais os feriados bancários desse ano?"
-            )
+async def run(message: str) -> None:
+    """Executa o grafo com narracao rica de status para o terminal."""
+    initial_state = {"messages": [HumanMessage(content=message)]}
+
+    async for item in NarrationAdapter(
+        graph.astream(initial_state, stream_mode=["custom", "messages"])
+    ):
+        if isinstance(item, str):
+            # Streaming de tokens da resposta final
+            _safe_print(item, end="", flush=True)
+        else:
+            # Evento canonico de narracao
+            render_event(item)
+
+
+# =========================================================
+# Entrada
+# =========================================================
+
+if __name__ == "__main__":
+    asyncio.run(
+        run(
+            "Daqui a exatamente 100 dias uteis, que data sera? "
+            "E qual e o dia da semana dessa data? "
+            "Alem disso, quantos dias corridos existem entre hoje e essa data? "
+            "Qual e a proxima sexta-feira? "
+            "E quantas sextas-feiras ainda existem em 2026 a partir de hoje? "
+            "Alem disso, quanto e (52 * 5) + 3? "
+            "Que dia da semana foi o Natal do ano retrasado? "
+            "Quais os feriados bancarios desse ano?"
         )
-    ]
-}
-
-
-# =========================================================
-# invoke()
-# Executa tudo e retorna resultado final
-# =========================================================
-
-# result = graph.invoke(input_data)
-#
-# print("\nRESULTADO FINAL:")
-# print(result["messages"][-1].content)
-
-
-# =========================================================
-# stream()
-# Executa emitindo eventos incrementais
-# =========================================================
-
-
-# ---------------------------------------------------------
-# stream_mode="values"
-#
-# Emite estado completo atualizado
-# ---------------------------------------------------------
-
-# for event in graph.stream(
-#     input_data,
-#     stream_mode="values",
-# ):
-#     print("\nEVENT:")
-#     print(event["messages"][-1])
-
-
-# ---------------------------------------------------------
-# stream_mode="updates"
-#
-# Emite apenas alterações por nó
-# ---------------------------------------------------------
-
-# for event in graph.stream(
-#     input_data,
-#     stream_mode="updates",
-# ):
-#     print("\nUPDATE:")
-#     print(event)
-
-
-# ---------------------------------------------------------
-# stream_mode="messages"
-#
-# Stream de tokens/mensagens do LLM
-# ---------------------------------------------------------
-
-# for token, metadata in graph.stream(
-#     input_data,
-#     stream_mode="messages",
-# ):
-#     print("\nMESSAGE:")
-#     print(token.content, end="")
-
-
-# ---------------------------------------------------------
-# stream_mode="debug"
-#
-# Eventos internos detalhados do runtime
-# ---------------------------------------------------------
-
-# for event in graph.stream(
-#     input_data,
-#     stream_mode="debug",
-# ):
-#     print("\nDEBUG EVENT:")
-#     print(event)
-
-
-# ---------------------------------------------------------
-# stream_mode=["updates", "messages"]
-#
-# Combinação ideal para frontend:
-# - "updates" para progresso de ferramentas
-# - "messages" para streaming de tokens da resposta final
-# ---------------------------------------------------------
-
-for mode, data in graph.stream(
-    initial_state,
-    stream_mode=["updates", "messages"],
-):
-    if mode == "messages":
-        token, metadata = data
-        if metadata.get("langgraph_node") != "agent":
-            continue
-        # content pode ser string ou lista de content blocks (padrão LangChain)
-        content = token.content
-        text = (
-            "".join(c.get("text", "") for c in content if isinstance(c, dict))
-            if isinstance(content, list)
-            else content or ""
-        )
-        if text:
-            print(text, end="", flush=True)
-
-print()
+    )

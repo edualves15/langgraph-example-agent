@@ -4,6 +4,8 @@ from typing import Union
 
 from langchain_core.tools import tool
 
+from v2.tools import NarrationMeta
+
 
 # Tool design best practices are used here to maximize LLM understanding:
 # - clear tool name
@@ -134,8 +136,9 @@ def calculate_math_expression(expression: str) -> str:
     return str(result)
 
 
-calculate_math_expression.metadata = {
-    "step_label": "Calculando expressão matemática...",
-    "step_label_template": "Calculando {expression}...",
-    "step_icon": "🔢",
-}
+object.__setattr__(calculate_math_expression, "narration", NarrationMeta(
+    icon="🔢",
+    announce_template="Resolvendo {expression}",
+    done_label="Cálculo concluído",
+    error_label="Cálculo falhou",
+))

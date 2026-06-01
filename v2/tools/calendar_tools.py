@@ -4,6 +4,8 @@ from typing import Literal, Optional
 
 from langchain_core.tools import tool
 
+from v2.tools import NarrationMeta
+
 
 # Tool design best practices are used here to maximize LLM understanding:
 # - clear tool name
@@ -713,52 +715,61 @@ def list_dates_in_range(
 
 
 # ---------------------------------------------------------------------------
-# Metadata (step labels para o loop de streaming)
+# NarrationMeta (metadados visuais para o sistema de narracao)
 # ---------------------------------------------------------------------------
 
-get_today_info.metadata = {
-    "step_label": "Consultando data de hoje...",
-    "step_icon": "📅",
-}
+object.__setattr__(get_today_info, "narration", NarrationMeta(
+    icon="📅",
+    announce_template="Consultando data de hoje",
+    done_label="Data atual obtida",
+    error_label="Falha ao consultar data",
+))
 
-get_date_details.metadata = {
-    "step_label": "Consultando detalhes da data...",
-    "step_label_template": "Consultando detalhes de {date_str}...",
-    "step_icon": "📅",
-}
+object.__setattr__(get_date_details, "narration", NarrationMeta(
+    icon="📅",
+    announce_template="Analisando o dia {date_str}",
+    done_label="Detalhes da data obtidos",
+    error_label="Falha ao consultar data",
+))
 
-calculate_date_difference.metadata = {
-    "step_label": "Calculando diferença entre datas...",
-    "step_label_template": "Calculando diferença entre {start_date} e {end_date}...",
-    "step_icon": "📅",
-}
+object.__setattr__(calculate_date_difference, "narration", NarrationMeta(
+    icon="📅",
+    announce_template="Medindo o intervalo entre {start_date} e {end_date}",
+    done_label="Diferença calculada",
+    error_label="Falha no cálculo de datas",
+))
 
-shift_date.metadata = {
-    "step_label": "Calculando data resultante...",
-    "step_label_template": "Calculando {base_date} + {amount} {unit}...",
-    "step_icon": "📅",
-}
+object.__setattr__(shift_date, "narration", NarrationMeta(
+    icon="📅",
+    announce_template="Calculando a data {amount} {unit} a partir de {base_date}",
+    done_label="Data resultante calculada",
+    error_label="Falha no deslocamento de data",
+))
 
-count_business_days.metadata = {
-    "step_label": "Contando dias úteis...",
-    "step_label_template": "Contando dias úteis entre {start_date} e {end_date}...",
-    "step_icon": "📅",
-}
+object.__setattr__(count_business_days, "narration", NarrationMeta(
+    icon="📅",
+    announce_template="Contando os dias úteis entre {start_date} e {end_date}",
+    done_label="Dias úteis contados",
+    error_label="Falha na contagem de dias úteis",
+))
 
-add_business_days.metadata = {
-    "step_label": "Calculando prazo em dias úteis...",
-    "step_label_template": "Calculando {business_days} dias úteis a partir de {start_date}...",
-    "step_icon": "📅",
-}
+object.__setattr__(add_business_days, "narration", NarrationMeta(
+    icon="📅",
+    announce_template="Avançando {business_days} dias úteis desde {start_date}",
+    done_label="Prazo calculado",
+    error_label="Falha no cálculo de prazo",
+))
 
-find_next_weekday.metadata = {
-    "step_label": "Buscando próximo dia da semana...",
-    "step_label_template": "Buscando {direction} {weekday} a partir de {reference_date}...",
-    "step_icon": "📅",
-}
+object.__setattr__(find_next_weekday, "narration", NarrationMeta(
+    icon="📅",
+    announce_template="Procurando a {direction} de {weekday}",
+    done_label="Dia da semana encontrado",
+    error_label="Falha ao buscar dia da semana",
+))
 
-list_dates_in_range.metadata = {
-    "step_label": "Listando datas no intervalo...",
-    "step_label_template": "Listando datas entre {start_date} e {end_date}...",
-    "step_icon": "📅",
-}
+object.__setattr__(list_dates_in_range, "narration", NarrationMeta(
+    icon="📅",
+    announce_template="Listando as datas entre {start_date} e {end_date}",
+    done_label="Datas listadas",
+    error_label="Falha ao listar datas",
+))
