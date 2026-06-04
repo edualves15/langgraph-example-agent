@@ -186,23 +186,56 @@ body {
 }
 
 /* ── Balão ── */
-.msg-wrapper .bubble {
+.msg-wrapper.user .bubble {
   font-size: 14px; line-height: 1.7;
   white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere;
-}
-/* Usuário */
-.msg-wrapper.user .bubble {
   max-width: 520px;
   padding: 11px 15px; border-radius: 14px;
   background: var(--user); border: 1px solid #2b568a;
 }
-/* Agente — sem fundo, largura total */
+/* Agente — markdown, sem fundo, largura total */
 .msg-wrapper.assistant .bubble {
+  font-size: 14px; line-height: 1.7;
+  word-wrap: break-word; overflow-wrap: anywhere;
   background: transparent; border: none;
 }
 
+/* ── Markdown dentro do balão do agente ── */
+.msg-wrapper.assistant .bubble p { margin: 0 0 0.75em; }
+.msg-wrapper.assistant .bubble p:last-child { margin-bottom: 0; }
+.msg-wrapper.assistant .bubble strong { font-weight: 700; color: var(--text); }
+.msg-wrapper.assistant .bubble em { font-style: italic; }
+.msg-wrapper.assistant .bubble code {
+  font-family: var(--mono); font-size: 0.9em;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 5px;
+}
+.msg-wrapper.assistant .bubble pre {
+  margin: 0.75em 0; padding: 10px 12px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  overflow-x: auto;
+}
+.msg-wrapper.assistant .bubble pre code {
+  background: none; border: none; padding: 0; font-size: 0.88em;
+}
+.msg-wrapper.assistant .bubble h2 { font-size: 1.1em; font-weight: 700; margin: 1.8em 0 0.35em; }
+.msg-wrapper.assistant .bubble h3 { font-size: 1.05em; font-weight: 700; margin: 1.55em 0 0.3em; }
+.msg-wrapper.assistant .bubble h4 { font-size: 1em; font-weight: 700; margin: 1.3em 0 0.25em; }
+.msg-wrapper.assistant .bubble ul { margin: 0.5em 0; padding-left: 1.5em; }
+.msg-wrapper.assistant .bubble li { margin-bottom: 0.3em; }
+.msg-wrapper.assistant .bubble hr {
+  border: none; border-top: 1px solid var(--border);
+  margin: 1.25em 0;
+}
+.msg-wrapper.assistant .bubble blockquote {
+  margin: 0.75em 0; padding: 6px 12px;
+  border-left: 3px solid var(--accent);
+  color: var(--muted); font-style: italic;
+}
+.msg-wrapper.assistant .bubble blockquote p { margin: 0.3em 0; }
+
 /* Streaming cursor */
-.bubble.streaming::after { content: "▋"; color: var(--accent); animation: blink 1s steps(2) infinite; }
+.blink::after { content: "▋"; color: var(--accent); animation: blink 1s steps(2) infinite; font-style: normal; }
 @keyframes blink { 50% { opacity: 0; } }
 
 .suggestions { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 12px; }

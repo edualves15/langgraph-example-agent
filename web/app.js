@@ -155,7 +155,7 @@ function createAgentWrapper(statusClass, label, icon) {
       `<div class="who">${label}</div>` +
     `</div>` +
     `<div class="bubble streaming"></div>`;
-  return { wrapper, bubble: wrapper.querySelector(".bubble") };
+  return { wrapper, bubble: wrapper.querySelector(".bubble"), raw: "" };
 }
 
 function setAgentStatus(wrapper, statusClass, label, icon) {
@@ -171,7 +171,7 @@ function getAssistantBubble(messageId) {
   if (!entry) {
     const block = createAgentWrapper("", "Agent", "");
     chatEl.appendChild(block.wrapper);
-    entry = { el: block.bubble, body: block.bubble, wrapper: block.wrapper };
+    entry = { el: block.bubble, body: block.bubble, wrapper: block.wrapper, raw: block.raw };
     assistantBubbles.set(messageId, entry);
   }
   return entry;
@@ -204,6 +204,64 @@ function logEvent(event) {
 function escapeHtml(s) {
   return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 }
+
+// ── Markdown formatter (leve, sem libs externas) ──
+const MD = {
+  format(src) {
+    let h = escapeHtml(src);
+
+    // 1. Code blocks — proteger com placeholder
+    const blocks = [];
+    h = h.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+      blocks.push("<pre><code>" + code.trim() + "</code></pre>");
+      return "\x00B" + (blocks.length - 1) + "\x00";
+    });
+
+    // 2. Inline code — proteger
+    const inlines = [];
+    h = h.replace(/`([^`]+)`/g, (_, code) => {
+      inlines.push("<code>" + code + "</code>");
+      return "\x00I" + (inlines.length - 1) + "\x00";
+    });
+
+    // 3. Horizontal rules
+    h = h.replace(/^[-*_]{3,}\s*$/gm, "<hr>");
+
+    // 4. Blockquotes (> text)
+    h = h.replace(/^&gt; (.+)$/gm, "<blockquote><p>$1</p></blockquote>");
+    h = h.replace(/<\/blockquote>\n<blockquote>/g, "\n");
+
+    // 5. Headers
+    h = h.replace(/^### (.+)$/gm, "<h4>$1</h4>");
+    h = h.replace(/^## (.+)$/gm, "<h3>$1</h3>");
+    h = h.replace(/^# (.+)$/gm, "<h2>$1</h2>");
+
+    // 6. Lists (* or -)
+    h = h.replace(/^[\*-] (.+)$/gm, "<li>$1</li>");
+    h = h.replace(/((?:<li>.*<\/li>\n?)+)/g, "<ul>$1</ul>");
+
+    // 7. Bold
+    h = h.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+
+    // 8. Italic — single * pairs (bold já consumiu os **)
+    h = h.replace(/\*(.+?)\*/g, "<em>$1</em>");
+
+    // 9. Restore inline code + code blocks
+    h = h.replace(/\x00I(\d+)\x00/g, (_, i) => inlines[+i]);
+    h = h.replace(/\x00B(\d+)\x00/g, (_, i) => blocks[+i]);
+
+    // 10. Paragraphs — só envolve texto, preserva blocos HTML intactos
+    h = h.split(/\n\n+/).map(block => {
+      const t = block.trim();
+      if (!t) return "";
+      // Bloco HTML (h2-h4, ul, ol, hr, blockquote, pre) — não encapsular
+      if (/^<(h[2-4]|ul|ol|hr|blockquote|pre)\b/.test(t)) return block;
+      return "<p>" + block.replace(/\n/g, "<br>") + "</p>";
+    }).join("");
+
+    return h;
+  },
+};
 
 function renderProverbs(proverbs) {
   proverbsEl.innerHTML = "";
@@ -311,7 +369,7 @@ const subscriber = {
   onTextMessageStartEvent: ({ event }) => {
     currentAction = "escrevendo resposta";
     if (pendingAgentBlock) {
-      const entry = { el: pendingAgentBlock.bubble, body: pendingAgentBlock.bubble, wrapper: pendingAgentBlock.wrapper };
+      const entry = { el: pendingAgentBlock.bubble, body: pendingAgentBlock.bubble, wrapper: pendingAgentBlock.wrapper, raw: pendingAgentBlock.raw };
       assistantBubbles.set(event.messageId, entry);
       pendingAgentBlock = null;
     } else {
@@ -320,12 +378,16 @@ const subscriber = {
   },
   onTextMessageContentEvent: ({ event }) => {
     const b = getAssistantBubble(event.messageId);
-    b.body.append(event.delta);
+    b.raw += event.delta;
+    b.body.innerHTML = MD.format(b.raw) + '<i class="blink"></i>';
     chatEl.scrollTop = chatEl.scrollHeight;
   },
   onTextMessageEndEvent: ({ event }) => {
     const b = assistantBubbles.get(event.messageId);
-    if (b) b.el.classList.remove("streaming");
+    if (b) {
+      b.el.classList.remove("streaming");
+      b.body.innerHTML = MD.format(b.raw);
+    }
   },
 
   // Tool calls
