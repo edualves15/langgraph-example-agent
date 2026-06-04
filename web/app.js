@@ -43,24 +43,78 @@ function setStatus(s) {
 }
 
 function addUserBubble(text) {
-  const el = document.createElement("div");
-  el.className = "bubble user";
-  el.innerHTML = `<div class="who">você</div>`;
-  el.append(document.createTextNode(text));
-  chatEl.appendChild(el);
+  // FLIP via Web Animations API: desliza composer + suggestions do centro
+  // para a base. Usamos WAAPI porque CSS transition depende de reflow hacks
+  // que falham quando o browser otimiza estados intermediários no mesmo tick.
+  const panel = chatEl.closest(".chat-panel");
+  if (panel.classList.contains("is-empty")) {
+    const chatStart = document.getElementById("chat-start");
+    const composer = document.getElementById("composer");
+    const suggestions = document.getElementById("suggestions");
+
+    // 1. Posições no centro
+    const compFirst = composer.getBoundingClientRect();
+    const suggFirst = suggestions.getBoundingClientRect();
+
+    // 2. Move DOM para posição final
+    panel.appendChild(composer);
+    panel.insertBefore(suggestions, composer);
+    panel.classList.remove("is-empty");
+
+    // 3. Posições na base
+    const compLast = composer.getBoundingClientRect();
+    const suggLast = suggestions.getBoundingClientRect();
+
+    // 4. Anima com WAAPI (do centro → base)
+    const ease = "cubic-bezier(0.4, 0, 0.2, 1)";
+    composer.animate(
+      [{ transform: `translate(${compFirst.left - compLast.left}px, ${compFirst.top - compLast.top}px)` },
+       { transform: "translate(0, 0)" }],
+      { duration: 400, easing: ease, fill: "forwards" }
+    );
+    suggestions.animate(
+      [{ transform: `translate(${suggFirst.left - suggLast.left}px, ${suggFirst.top - suggLast.top}px)` },
+       { transform: "translate(0, 0)" }],
+      { duration: 400, easing: ease, fill: "forwards" }
+    );
+
+    // Fade-out do prompt
+    chatStart.querySelector(".empty-prompt").animate(
+      [{ opacity: 1 }, { opacity: 0 }],
+      { duration: 250, easing: "ease", fill: "forwards" }
+    );
+
+    // Cleanup
+    setTimeout(() => { chatStart.style.display = "none"; }, 420);
+  }
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "msg-wrapper user";
+  wrapper.innerHTML =
+    `<div class="msg-header">` +
+      `<div class="who">você</div>` +
+      `<div class="avatar" aria-hidden="true">👤</div>` +
+    `</div>` +
+    `<div class="bubble"></div>`;
+  wrapper.querySelector(".bubble").textContent = text;
+  chatEl.appendChild(wrapper);
   chatEl.scrollTop = chatEl.scrollHeight;
 }
 
 function getAssistantBubble(messageId) {
   let entry = assistantBubbles.get(messageId);
   if (!entry) {
-    const el = document.createElement("div");
-    el.className = "bubble assistant streaming";
-    el.innerHTML = `<div class="who">agente</div>`;
-    const body = document.createElement("span");
-    el.appendChild(body);
-    chatEl.appendChild(el);
-    entry = { el, body };
+    const wrapper = document.createElement("div");
+    wrapper.className = "msg-wrapper assistant";
+    wrapper.innerHTML =
+      `<div class="msg-header">` +
+        `<div class="avatar" aria-hidden="true">🤖</div>` +
+        `<div class="who">agente</div>` +
+      `</div>` +
+      `<div class="bubble streaming"></div>`;
+    const bubble = wrapper.querySelector(".bubble");
+    chatEl.appendChild(wrapper);
+    entry = { el: bubble, body: bubble, wrapper };
     assistantBubbles.set(messageId, entry);
   }
   return entry;
@@ -131,24 +185,19 @@ function setToolArgs(t, raw) {
   t.argsShown = true;
 }
 
-// Tag de origem/categoria da ferramenta (apenas apresentação no front — não
-// altera o protocolo). Mapeia o nome oficial da tool para um rótulo legível.
-const TOOL_TAGS = {
-  get_today_info: "calendar", get_date_details: "calendar", calculate_date_difference: "calendar",
-  shift_date: "calendar", count_business_days: "calendar", add_business_days: "calendar",
-  find_next_weekday: "calendar", list_dates_in_range: "calendar",
-  calculate_math_expression: "math",
-  add_proverb: "state", set_proverbs: "state",
+// Classificação por origem (quem iniciou a chamada), não pela função da tool.
+// O protocolo AG-UI não expõe um campo "source"; a origem é inferida pelo nome.
+const TOOL_ORIGINS = {
   send_email: "hitl",
-  tavily_search: "web", tavily_extract: "web",
 };
-const TAG_LABELS = {
-  calendar: "📅 calendário", math: "🔢 cálculo", state: "🧩 estado",
-  hitl: "🙋 aprovação", web: "🔎 web", backend: "⚙️ backend",
+const ORIGIN_LABELS = {
+  agent:    { key: "agent",    label: "🤖 LangGraph" },
+  hitl:     { key: "hitl",     label: "👤 interativo" },
+  frontend: { key: "frontend", label: "🖥️ Frontend" },
 };
-function toolTag(name) {
-  const key = TOOL_TAGS[name] || "backend";
-  return { key, label: TAG_LABELS[key] };
+function toolOrigin(name) {
+  const key = TOOL_ORIGINS[name] || "agent";
+  return ORIGIN_LABELS[key];
 }
 
 // ---------------------------------------------------------------------------
@@ -181,13 +230,21 @@ const subscriber = {
 
   // Tool calls
   onToolCallStartEvent: ({ event }) => {
-    const tag = toolTag(event.toolCallName);
+    // Dedup: durante o resume de HITL o backend reemite TOOL_CALL_START para o
+    // mesmo tool_call_id (nova instância do agente com streamed_tool_call_ids vazio).
+    // O card existente receberá o resultado quando TOOL_CALL_RESULT chegar.
+    if (toolCards.has(event.toolCallId)) {
+      bumpBadge("tools");
+      return;
+    }
+    const origin = toolOrigin(event.toolCallName);
     const card = document.createElement("div");
-    card.className = "tool-card";
+    card.className = "tool-card collapsed";
     card.innerHTML =
-      `<div class="t-head">` +
+      `<div class="t-head" role="button" tabindex="0">` +
+        `<span class="tog">▶</span>` +
         `<span class="dot"></span>` +
-        `<span class="ttag ttag-${tag.key}">${tag.label}</span>` +
+        `<span class="ttag ttag-${origin.key}">${origin.label}</span>` +
         `<span class="tname">${escapeHtml(event.toolCallName)}</span>` +
         `<span class="tid">${escapeHtml(event.toolCallId.slice(0, 8))}</span>` +
       `</div>` +
@@ -195,6 +252,12 @@ const subscriber = {
         `<div class="field args-field" hidden><span class="lbl">argumentos</span><pre class="args"></pre></div>` +
         `<div class="field result-field" hidden><span class="lbl">resultado</span><pre class="result"></pre></div>` +
       `</div>`;
+    // Accordion toggle no header
+    card.querySelector(".t-head").addEventListener("click", () => {
+      card.classList.toggle("collapsed");
+      const tog = card.querySelector(".tog");
+      if (tog) tog.textContent = card.classList.contains("collapsed") ? "▶" : "▼";
+    });
     if (toolsEl.querySelector(".empty")) toolsEl.innerHTML = "";
     toolsEl.appendChild(card);
     bumpBadge("tools");
@@ -213,7 +276,7 @@ const subscriber = {
   // (ver onMessagesChanged). Mantemos este handler para providers que streamam.
   onToolCallArgsEvent: ({ event }) => {
     const t = toolCards.get(event.toolCallId);
-    if (!t) return;
+    if (!t || t.argsShown) return;
     t.buffer += event.delta;
     setToolArgs(t, t.buffer);
   },
