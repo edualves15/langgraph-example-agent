@@ -83,9 +83,12 @@ GET  /agent/health →  {"status":"ok","agent":{"name":"private-agent"}}  (criad
 GET  /health      →  {"status":"ok"}
 ```
 
-`app/main.py`: `build_graph()` → `LangGraphAgent(name=..., graph=...)` →
-`add_langgraph_fastapi_endpoint(app, agent, "/agent")`. O `StaticFiles` é montado
-em `/` **por último** para não capturar `/agent` e `/health`.
+`app/main.py`: `build_graph()` → `LangGraphAgent(name=..., graph=...)`. O endpoint
+`POST /agent` é definido manualmente (replicando `add_langgraph_fastapi_endpoint`
+com os **mesmos primitivos oficiais**: `agent.clone().run(input)` + `EventEncoder`),
+mas envolto em tratamento de erro resiliente — ver seção **Erros**. `GET /agent/health`
+é mantido para paridade de contrato. O `StaticFiles` é montado em `/` **por último**
+para não capturar `/agent` e `/health`.
 
 ### LangGraph graph (`app/agent/graph.py`)
 
@@ -142,10 +145,19 @@ Não há metadados de narração — o streaming (`TOOL_CALL_*`) é automático.
 
 `app/services/llm_service.py` — único ponto para trocar de provider. Atual: Gemini (`ChatGoogleGenerativeAI`).
 
-### Erros
+### Erros (resiliência)
 
-A integração oficial emite `RUN_ERROR` no stream. Não há mais classificação de erro
-customizada (`app/exceptions.py` foi removido).
+Nenhuma exceção vaza como traceback e nenhuma é mascarada — toda falha vira uma
+mensagem curta e segura.
+
+- `app/errors.py::describe_error(exc)`: classifica a exceção em mensagem **específica**
+  (auth/401-403, cota/429, requisição/400, indisponibilidade/5xx, timeout, rede) ou
+  **genérica com pista** (`Tipo: 1ª linha`) quando indeterminável. Nunca lança.
+- Stream `/agent`: o gerador envolve `agent.run()` em `try/except`; em erro, loga **uma
+  linha** (sem stack trace) e emite um `RUN_ERROR` oficial (`code="agent_run_error"`)
+  ao cliente antes de fechar o stream.
+- Handlers globais em `app/main.py`: `RequestValidationError` → 422 JSON limpo;
+  `Exception` → 500 JSON com a mensagem de `describe_error`. Ambos logam uma linha.
 
 ## Environment variables
 

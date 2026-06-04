@@ -85,6 +85,7 @@ function logEvent(event) {
     `<span class="payload">${escapeHtml(JSON.stringify(rest))}</span>`;
   logEl.appendChild(line);
   logEl.scrollTop = logEl.scrollHeight;
+  bumpBadge("events");
   // Console do navegador — para verificação do SSE/protocolo.
   console.log("%c[AG-UI] " + type, "color:#6ea8fe", event);
 }
@@ -104,6 +105,50 @@ function renderProverbs(proverbs) {
     li.textContent = p;
     proverbsEl.appendChild(li);
   }
+}
+
+// Preenche o campo de argumentos de um tool card a partir de um valor cru
+// (string JSON, objeto ou nulo). Mantém oculto quando não há argumentos ({}).
+function setToolArgs(t, raw) {
+  if (raw == null || raw === "" || t.argsShown) return;
+  let obj = raw;
+  if (typeof raw === "string") {
+    const s = raw.trim();
+    if (!s) return;
+    try {
+      obj = JSON.parse(s);
+    } catch {
+      // String não-JSON com conteúdo — exibe crua (stream parcial de um provider).
+      t.argsField.hidden = false;
+      t.argsEl.textContent = s;
+      return;
+    }
+  }
+  // Objeto vazio ({}) = ferramenta sem argumentos → não mostra o campo.
+  if (obj && typeof obj === "object" && !Array.isArray(obj) && Object.keys(obj).length === 0) return;
+  t.argsField.hidden = false;
+  t.argsEl.textContent = JSON.stringify(obj, null, 2);
+  t.argsShown = true;
+}
+
+// Tag de origem/categoria da ferramenta (apenas apresentação no front — não
+// altera o protocolo). Mapeia o nome oficial da tool para um rótulo legível.
+const TOOL_TAGS = {
+  get_today_info: "calendar", get_date_details: "calendar", calculate_date_difference: "calendar",
+  shift_date: "calendar", count_business_days: "calendar", add_business_days: "calendar",
+  find_next_weekday: "calendar", list_dates_in_range: "calendar",
+  calculate_math_expression: "math",
+  add_proverb: "state", set_proverbs: "state",
+  send_email: "hitl",
+  tavily_search: "web", tavily_extract: "web",
+};
+const TAG_LABELS = {
+  calendar: "📅 calendário", math: "🔢 cálculo", state: "🧩 estado",
+  hitl: "🙋 aprovação", web: "🔎 web", backend: "⚙️ backend",
+};
+function toolTag(name) {
+  const key = TOOL_TAGS[name] || "backend";
+  return { key, label: TAG_LABELS[key] };
 }
 
 // ---------------------------------------------------------------------------
@@ -136,27 +181,41 @@ const subscriber = {
 
   // Tool calls
   onToolCallStartEvent: ({ event }) => {
+    const tag = toolTag(event.toolCallName);
     const card = document.createElement("div");
     card.className = "tool-card";
     card.innerHTML =
-      `<div class="t-head"><span>${event.toolCallName}</span><span>${event.toolCallId.slice(0, 8)}</span></div>` +
-      `<div class="t-body"><div class="lbl">args</div><pre class="args"></pre>` +
-      `<div class="lbl result-lbl" style="display:none">result</div><pre class="result"></pre></div>`;
+      `<div class="t-head">` +
+        `<span class="dot"></span>` +
+        `<span class="ttag ttag-${tag.key}">${tag.label}</span>` +
+        `<span class="tname">${escapeHtml(event.toolCallName)}</span>` +
+        `<span class="tid">${escapeHtml(event.toolCallId.slice(0, 8))}</span>` +
+      `</div>` +
+      `<div class="t-body">` +
+        `<div class="field args-field" hidden><span class="lbl">argumentos</span><pre class="args"></pre></div>` +
+        `<div class="field result-field" hidden><span class="lbl">resultado</span><pre class="result"></pre></div>` +
+      `</div>`;
     if (toolsEl.querySelector(".empty")) toolsEl.innerHTML = "";
     toolsEl.appendChild(card);
+    bumpBadge("tools");
     toolCards.set(event.toolCallId, {
       card,
       argsEl: card.querySelector(".args"),
+      argsField: card.querySelector(".args-field"),
       resultEl: card.querySelector(".result"),
-      resultLbl: card.querySelector(".result-lbl"),
+      resultField: card.querySelector(".result-field"),
       buffer: "",
+      argsShown: false,
     });
   },
+  // Alguns providers (ex.: Gemini) não fazem streaming dos args como
+  // TOOL_CALL_ARGS — eles chegam completos na mensagem reconstruída
+  // (ver onMessagesChanged). Mantemos este handler para providers que streamam.
   onToolCallArgsEvent: ({ event }) => {
     const t = toolCards.get(event.toolCallId);
     if (!t) return;
     t.buffer += event.delta;
-    t.argsEl.textContent = t.buffer;
+    setToolArgs(t, t.buffer);
   },
   onToolCallEndEvent: ({ event }) => {
     const t = toolCards.get(event.toolCallId);
@@ -165,8 +224,24 @@ const subscriber = {
   onToolCallResultEvent: ({ event }) => {
     const t = toolCards.get(event.toolCallId);
     if (!t) return;
-    t.resultLbl.style.display = "block";
-    t.resultEl.textContent = event.content;
+    t.resultField.hidden = false;
+    let content = event.content;
+    try { content = JSON.stringify(JSON.parse(content), null, 2); } catch { /* texto simples */ }
+    t.resultEl.textContent = content;
+  },
+  // Fonte autoritativa dos argumentos (oficial, agnóstica de provider): as
+  // mensagens reconstruídas pelo cliente. Preenche os args de cada tool card.
+  onMessagesChanged: ({ messages }) => {
+    if (!Array.isArray(messages)) return;
+    for (const m of messages) {
+      const calls = m.toolCalls || m.tool_calls;
+      if (!calls) continue;
+      for (const call of calls) {
+        const t = toolCards.get(call.id);
+        if (!t || t.argsShown) continue;
+        setToolArgs(t, call.function?.arguments ?? call.args);
+      }
+    }
   },
 
   // Estado compartilhado
@@ -259,4 +334,33 @@ $("suggestions").addEventListener("click", (e) => {
   if (btn) send(btn.dataset.prompt);
 });
 
-$("clear-log").addEventListener("click", () => (logEl.innerHTML = ""));
+$("clear-log").addEventListener("click", (e) => {
+  e.stopPropagation();
+  logEl.innerHTML = "";
+});
+
+// ---------------------------------------------------------------------------
+// Abas do painel de debug + contadores totais (tool calls / eventos)
+// ---------------------------------------------------------------------------
+const tabsEl = document.querySelector(".tabs");
+const counters = { tools: 0, events: 0 };
+
+function setActiveTab(name) {
+  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
+  document.querySelectorAll(".tab-content").forEach((c) => c.classList.toggle("active", c.dataset.tab === name));
+}
+
+// Contador total persistente (não zera ao trocar de aba).
+function bumpBadge(name) {
+  if (!(name in counters)) return;
+  const badge = $("badge-" + name);
+  if (!badge) return;
+  counters[name] += 1;
+  badge.textContent = String(counters[name]);
+  badge.hidden = false;
+}
+
+tabsEl.addEventListener("click", (e) => {
+  const btn = e.target.closest(".tab");
+  if (btn) setActiveTab(btn.dataset.tab);
+});

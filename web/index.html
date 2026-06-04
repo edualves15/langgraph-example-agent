@@ -41,30 +41,36 @@
       </form>
     </section>
 
-    <!-- Coluna lateral -->
+    <!-- Coluna lateral (painel de debug com abas) -->
     <aside class="side">
-      <!-- Estado compartilhado -->
       <section class="panel">
-        <div class="panel-head">🧩 Estado compartilhado <small>STATE_SNAPSHOT / STATE_DELTA</small></div>
-        <div class="panel-body">
-          <h4>proverbs</h4>
-          <ul id="proverbs" class="proverbs"><li class="empty">— vazio —</li></ul>
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-tab="state" role="tab">🧩 Estado</button>
+          <button class="tab" data-tab="tools" role="tab">🛠️ Tool calls <span class="badge" id="badge-tools" hidden>0</span></button>
+          <button class="tab" data-tab="events" role="tab">📡 Eventos <span class="badge" id="badge-events" hidden>0</span></button>
         </div>
-      </section>
 
-      <!-- Tool calls -->
-      <section class="panel">
-        <div class="panel-head">🛠️ Tool calls <small>TOOL_CALL_*</small></div>
-        <div id="tools" class="panel-body tools"><div class="empty">Nenhuma ferramenta executada ainda.</div></div>
-      </section>
+        <div class="tab-panels">
+          <!-- Estado compartilhado -->
+          <div class="tab-content active" data-tab="state">
+            <h4>proverbs <small>STATE_SNAPSHOT / STATE_DELTA</small></h4>
+            <ul id="proverbs" class="proverbs"><li class="empty">— vazio —</li></ul>
+          </div>
 
-      <!-- Log de eventos AG-UI -->
-      <section class="panel grow">
-        <div class="panel-head">
-          📡 Eventos AG-UI <small>verifique também o Console / Network</small>
-          <button id="clear-log" class="ghost" title="Limpar log">limpar</button>
+          <!-- Tool calls -->
+          <div class="tab-content" data-tab="tools">
+            <div id="tools" class="tools"><div class="empty">Nenhuma ferramenta executada ainda.</div></div>
+          </div>
+
+          <!-- Log de eventos AG-UI -->
+          <div class="tab-content" data-tab="events">
+            <div class="events-bar">
+              <small>verifique também o Console / Network</small>
+              <button id="clear-log" class="ghost" title="Limpar log">limpar</button>
+            </div>
+            <div id="log" class="log"></div>
+          </div>
         </div>
-        <div id="log" class="panel-body log"></div>
       </section>
     </aside>
   </main>
