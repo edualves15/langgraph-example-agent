@@ -549,10 +549,34 @@ async function send(text) {
   }
 }
 
+// Auto-resize do textarea (expande até 3 linhas, scroll depois)
+inputEl.addEventListener("input", () => {
+  inputEl.style.height = "auto";
+  const h = inputEl.scrollHeight;
+  const max = 90; // ~3 linhas
+  if (h > max) {
+    inputEl.style.height = max + "px";
+    inputEl.style.overflowY = "auto";
+  } else {
+    inputEl.style.height = h + "px";
+    inputEl.style.overflowY = "hidden";
+  }
+});
+
+// Enter = enviar, Shift+Enter = nova linha
+inputEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    $("composer").dispatchEvent(new Event("submit"));
+  }
+});
+
 $("composer").addEventListener("submit", (e) => {
   e.preventDefault();
-  const text = inputEl.value;
+  const text = inputEl.value.trim();
+  if (!text) return;
   inputEl.value = "";
+  inputEl.style.height = "auto"; // reseta altura
   send(text);
 });
 

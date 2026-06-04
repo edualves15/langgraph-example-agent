@@ -39,9 +39,11 @@
             <button data-prompt="Envie um e-mail para meu chefe (chefe@empresa.com) com o assunto 'Conversa sobre remuneração', pedindo para agendar uma reunião para discutir um aumento. Escreva o corpo você mesmo.">🙋 Aprovação humana</button>
           </div>
           <form id="composer" class="composer">
-            <input id="input" type="text" autocomplete="off"
-                   placeholder="Pergunte algo… (ex.: quanto é 15 * 4?)" />
-            <button id="send" type="submit">Enviar</button>
+            <div class="composer-wrap">
+              <textarea id="input" rows="1" autocomplete="off"
+                   placeholder="Pergunte algo… (ex.: quanto é 15 * 4?)"></textarea>
+              <button id="send" type="submit" title="Enviar">➤</button>
+            </div>
           </form>
         </div>
       </div>
