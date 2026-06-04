@@ -56,9 +56,11 @@ function addUserBubble(text) {
     const compFirst = composer.getBoundingClientRect();
     const suggFirst = suggestions.getBoundingClientRect();
 
-    // 2. Move DOM para posição final
+    // 2. Esconde prompt + move elementos para fora de .chat-start
+    chatStart.style.opacity = "0";
     panel.appendChild(composer);
     panel.insertBefore(suggestions, composer);
+    chatStart.style.display = "none";  // remove do layout imediatamente
     panel.classList.remove("is-empty");
 
     // 3. Posições na base
@@ -78,43 +80,98 @@ function addUserBubble(text) {
       { duration: 400, easing: ease, fill: "forwards" }
     );
 
-    // Fade-out do prompt
-    chatStart.querySelector(".empty-prompt").animate(
-      [{ opacity: 1 }, { opacity: 0 }],
-      { duration: 250, easing: "ease", fill: "forwards" }
-    );
-
-    // Cleanup
-    setTimeout(() => { chatStart.style.display = "none"; }, 420);
+    // Layout estável — insere balão do usuário imediatamente
+    chatEl.appendChild(buildUserWrapper(text));
+    chatEl.scrollTop = chatEl.scrollHeight;
+    return;
   }
 
+  chatEl.appendChild(buildUserWrapper(text));
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+function buildUserWrapper(text) {
   const wrapper = document.createElement("div");
   wrapper.className = "msg-wrapper user";
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  bubble.textContent = text;
+  wrapper.appendChild(bubble);
+  return wrapper;
+}
+
+// ── Bloco do agente ──
+
+let pendingAgentBlock = null; // criado em RUN_STARTED, consumido no 1º TEXT_MESSAGE_START
+let runStartTime = null;
+let runTimerInterval = null;
+let currentAction = "pensando";
+
+const ACTION_LABELS = {
+  // Steps
+  agent: "pensando",
+  tools: "usando ferramentas",
+  // Ferramentas de calendário
+  get_today_info: "consultando data de hoje",
+  get_date_details: "analisando data",
+  calculate_date_difference: "calculando diferença entre datas",
+  shift_date: "ajustando data",
+  count_business_days: "contando dias úteis",
+  add_business_days: "adicionando dias úteis",
+  find_next_weekday: "buscando próximo dia útil",
+  list_dates_in_range: "listando datas no intervalo",
+  // Demais ferramentas
+  calculate_math_expression: "calculando expressão",
+  add_proverb: "adicionando provérbio",
+  set_proverbs: "atualizando provérbios",
+  send_email: "preparando e-mail",
+  tavily_search: "pesquisando na web",
+  tavily_extract: "extraindo conteúdo web",
+};
+
+function actionLabel(name) {
+  return ACTION_LABELS[name] || name;
+}
+
+function formatElapsed(ms) { return (ms / 1000).toFixed(1) + "s"; }
+
+function timerLabel() {
+  return "Working… (" + formatElapsed(Date.now() - runStartTime) + " · " + currentAction + ")";
+}
+
+function setAction(action) {
+  currentAction = action;
+}
+
+function createAgentWrapper(statusClass, label, icon) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "msg-wrapper assistant";
+  const avatarHTML = statusClass === "spinner"
+    ? `<span class="avatar" aria-hidden="true"><span class="dots"><i></i><i></i><i></i></span></span>`
+    : `<span class="avatar avatar-${statusClass}" aria-hidden="true">${icon}</span>`;
   wrapper.innerHTML =
     `<div class="msg-header">` +
-      `<div class="who">você</div>` +
-      `<div class="avatar" aria-hidden="true">👤</div>` +
+      avatarHTML +
+      `<div class="who">${label}</div>` +
     `</div>` +
-    `<div class="bubble"></div>`;
-  wrapper.querySelector(".bubble").textContent = text;
-  chatEl.appendChild(wrapper);
-  chatEl.scrollTop = chatEl.scrollHeight;
+    `<div class="bubble streaming"></div>`;
+  return { wrapper, bubble: wrapper.querySelector(".bubble") };
+}
+
+function setAgentStatus(wrapper, statusClass, label, icon) {
+  const avatar = wrapper.querySelector(".avatar");
+  avatar.className = "avatar" + (statusClass ? " avatar-" + statusClass : "");
+  avatar.innerHTML = icon;
+  avatar.style.display = icon ? "" : "none";
+  wrapper.querySelector(".who").textContent = label;
 }
 
 function getAssistantBubble(messageId) {
   let entry = assistantBubbles.get(messageId);
   if (!entry) {
-    const wrapper = document.createElement("div");
-    wrapper.className = "msg-wrapper assistant";
-    wrapper.innerHTML =
-      `<div class="msg-header">` +
-        `<div class="avatar" aria-hidden="true">🤖</div>` +
-        `<div class="who">agente</div>` +
-      `</div>` +
-      `<div class="bubble streaming"></div>`;
-    const bubble = wrapper.querySelector(".bubble");
-    chatEl.appendChild(wrapper);
-    entry = { el: bubble, body: bubble, wrapper };
+    const block = createAgentWrapper("", "Agent", "");
+    chatEl.appendChild(block.wrapper);
+    entry = { el: block.bubble, body: block.bubble, wrapper: block.wrapper };
     assistantBubbles.set(messageId, entry);
   }
   return entry;
@@ -208,16 +265,59 @@ const subscriber = {
   onEvent: ({ event }) => logEvent(event),
 
   // Lifecycle
-  onRunStartedEvent: () => setStatus("running"),
-  onRunFinishedEvent: () => finalizeRun("done"),
+  onStepStartedEvent: ({ event }) => {
+    currentAction = actionLabel(event.stepName);
+  },
+  onRunStartedEvent: () => {
+    setStatus("running");
+    runStartTime = Date.now();
+    currentAction = actionLabel("agent");
+    const block = createAgentWrapper("spinner", "Working… (0.0s · " + currentAction + ")", "");
+    chatEl.appendChild(block.wrapper);
+    chatEl.scrollTop = chatEl.scrollHeight;
+    pendingAgentBlock = block;
+    runTimerInterval = setInterval(() => {
+      if (pendingAgentBlock) pendingAgentBlock.wrapper.querySelector(".who").textContent = timerLabel();
+    }, 100);
+  },
+  onRunFinishedEvent: () => {
+    clearInterval(runTimerInterval);
+    runTimerInterval = null;
+    const total = formatElapsed(Date.now() - runStartTime);
+    runStartTime = null;
+    for (const [, b] of assistantBubbles) {
+      setAgentStatus(b.wrapper, "", "Agent (" + total + ")", "");
+    }
+    if (pendingAgentBlock) {
+      pendingAgentBlock.wrapper.remove();
+      pendingAgentBlock = null;
+    }
+    finalizeRun("done");
+  },
   onRunErrorEvent: ({ event }) => {
+    clearInterval(runTimerInterval);
+    runTimerInterval = null;
+    runStartTime = null;
+    if (pendingAgentBlock) {
+      pendingAgentBlock.wrapper.remove();
+      pendingAgentBlock = null;
+    }
     finalizeRun("error");
     const b = getAssistantBubble("error-" + Date.now());
     b.body.textContent = "⚠️ " + (event.message || "Erro na execução.");
   },
 
   // Mensagens de texto (streaming)
-  onTextMessageStartEvent: ({ event }) => getAssistantBubble(event.messageId),
+  onTextMessageStartEvent: ({ event }) => {
+    currentAction = "escrevendo resposta";
+    if (pendingAgentBlock) {
+      const entry = { el: pendingAgentBlock.bubble, body: pendingAgentBlock.bubble, wrapper: pendingAgentBlock.wrapper };
+      assistantBubbles.set(event.messageId, entry);
+      pendingAgentBlock = null;
+    } else {
+      getAssistantBubble(event.messageId);
+    }
+  },
   onTextMessageContentEvent: ({ event }) => {
     const b = getAssistantBubble(event.messageId);
     b.body.append(event.delta);
@@ -230,6 +330,7 @@ const subscriber = {
 
   // Tool calls
   onToolCallStartEvent: ({ event }) => {
+    currentAction = actionLabel(event.toolCallName);
     // Dedup: durante o resume de HITL o backend reemite TOOL_CALL_START para o
     // mesmo tool_call_id (nova instância do agente com streamed_tool_call_ids vazio).
     // O card existente receberá o resultado quando TOOL_CALL_RESULT chegar.
@@ -281,6 +382,7 @@ const subscriber = {
     setToolArgs(t, t.buffer);
   },
   onToolCallEndEvent: ({ event }) => {
+    currentAction = "escrevendo resposta";
     const t = toolCards.get(event.toolCallId);
     if (t) t.card.classList.add("done");
   },
