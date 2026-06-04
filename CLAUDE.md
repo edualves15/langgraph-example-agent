@@ -45,99 +45,107 @@ pytest tests/test_calculator.py::test_calculate_math_expression
 # Health check
 curl http://localhost:8000/health
 
-# Nota: em PowerShell use aspas duplas escapadas: -d "{\"message\": \"...\"}"
-# Em bash/WSL use aspas simples normalmente.
+# Página de demonstração (chat AG-UI) — abrir no navegador
+#   http://localhost:8000/
 
-# Chat (sync) — aciona 1 tool
-curl -X POST http://localhost:8000/chat \
+# Endpoint oficial AG-UI (POST, SSE). Body = RunAgentInput (campos camelCase).
+# Nota: em PowerShell use aspas duplas escapadas: -d "{\"threadId\": \"...\"}"
+curl -N -X POST http://localhost:8000/agent \
   -H "Content-Type: application/json" \
-  -d '{"message": "quanto é 15 * 4?"}'
-
-# Chat (SSE streaming) — aciona 1 tool
-curl -X POST http://localhost:8000/chat/stream \
-  -H "Content-Type: application/json" \
-  -d '{"message": "que dia é hoje e quantos dias faltam para o natal?"}'
-
-# Chat (SSE streaming) — força múltiplos steps (math + calendário + web search)
-curl -X POST http://localhost:8000/chat/stream \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Qual a data de hoje? Quantos dias úteis faltam até 31/12/2025? Se eu trabalhar 8h por dia, quantas horas úteis são essas no total? Pesquise também qual foi o PIB do Brasil em 2024."}'
+  -H "Accept: text/event-stream" \
+  -d '{"threadId":"t1","runId":"r1","state":{},"messages":[{"id":"m1","role":"user","content":"quanto é 15 * 4?"}],"tools":[],"context":[],"forwardedProps":{}}'
 ```
 
 ## Architecture
 
-Single entry point: **`app/`** — FastAPI microservice with LangGraph orchestration, NarrationAdapter streaming, and tool narration system.
+**Implementação oficial do protocolo AG-UI sobre LangGraph.** O FastAPI (`app/`)
+expõe o agente via integração oficial `ag_ui_langgraph` e serve uma página de
+demonstração estática (`web/`) que usa o cliente oficial `@ag-ui/client`.
+
+Não há sistema de narração caseiro — o mapeamento LangGraph → eventos AG-UI é feito
+inteiramente pela biblioteca oficial. **Nunca reintroduza adaptadores de SSE
+customizados, `NarrationMeta`, nem endpoints `/chat` / `/chat/stream`.**
+
+### Bibliotecas oficiais
+
+| Componente | Pacote | Versão |
+|---|---|---|
+| Integração LangGraph → AG-UI | `ag-ui-langgraph[fastapi]` | 0.0.37 |
+| Core do protocolo (`ag_ui.core`) | `ag-ui-protocol` | 0.1.19 |
+| Cliente browser | `@ag-ui/client` (esm.sh, pinado) | 0.0.55 |
 
 ### Request flow
 
 ```
-POST /chat        →  AgentService.run()    →  graph.ainvoke()      →  answer
-POST /chat/stream →  AgentService.stream() →  graph.astream_events(v2) + NarrationAdapter →  SSE events
-GET  /health      →  {"status": "ok"}
+GET  /            →  web/index.html (StaticFiles, html=True)
+POST /agent       →  LangGraphAgent.run(RunAgentInput) → SSE de eventos AG-UI
+GET  /agent/health →  {"status":"ok","agent":{"name":"private-agent"}}  (criado pela lib)
+GET  /health      →  {"status":"ok"}
 ```
+
+`app/main.py`: `build_graph()` → `LangGraphAgent(name=..., graph=...)` →
+`add_langgraph_fastapi_endpoint(app, agent, "/agent")`. O `StaticFiles` é montado
+em `/` **por último** para não capturar `/agent` e `/health`.
 
 ### LangGraph graph (`app/agent/graph.py`)
 
-```
-START → agent_node → should_continue → tools_node → agent_node → ... → END
-```
+Usa o prebuilt oficial `create_react_agent` (loop ReAct agente↔ferramentas):
 
-- `agent_node` (`app/agent/nodes.py`): prepends system prompt, calls LLM, emits `tool_call` custom events via `adispatch_custom_event`
-- `tool_node` (`app/agent/nodes.py`): executes tools, emits `tool_result` / `tool_error` custom events with timing
-- `should_continue` (`app/agent/edges.py`): routes to `tools` or `END`; breaks loop when `ToolMessage` count reaches `MAX_TOOL_CALLS`
-- `AgentState` (`app/agent/state.py`): `messages: Annotated[list, operator.add]`; ephemeral per request
+- `model` = `get_llm()` (Gemini).
+- `prompt` = callable `_prompt(state)` que injeta o system prompt com a data de hoje.
+- `state_schema` = `AgentState` (`app/agent/state.py`): estende o `AgentState` do
+  prebuilt (`messages` + `add_messages`, `remaining_steps`) e adiciona `proverbs:
+  list[str]` como **estado compartilhado** exposto à UI.
+- `checkpointer` = `MemorySaver` (necessário para threads e human-in-the-loop).
 
-### Narration system (`app/narration/`)
+### Eventos AG-UI (wire format — verificável no console/Network)
 
-Translates `graph.astream_events(version="v2")` into typed `NarrationEvent` objects (or raw `str` tokens).
+`type` em **SCREAMING_SNAKE_CASE**, campos em **camelCase**, SSE `text/event-stream`:
 
-- `events.py` — `NarrationEvent` dataclass (framework-agnostic, JSON-serializable)
-- `adapter.py` — `NarrationAdapter`: async iterator, LangGraph events → `NarrationEvent | str`
-- `consumer.py` — terminal renderer for local development
+- Lifecycle: `RUN_STARTED` (`threadId`,`runId`), `RUN_FINISHED`, `RUN_ERROR`, `STEP_STARTED`/`STEP_FINISHED`.
+- Texto: `TEXT_MESSAGE_START` (`messageId`,`role`), `TEXT_MESSAGE_CONTENT` (`delta`), `TEXT_MESSAGE_END`.
+- Ferramentas: `TOOL_CALL_START` (`toolCallId`,`toolCallName`), `TOOL_CALL_ARGS` (`delta`), `TOOL_CALL_END`, `TOOL_CALL_RESULT` (`toolCallId`,`content`).
+- Estado: `STATE_SNAPSHOT` (`snapshot`), `STATE_DELTA` (`delta` JSON Patch), `MESSAGES_SNAPSHOT`.
+- Especiais: `CUSTOM` (`name`,`value`) — interrupts chegam como `name="on_interrupt"`; `RAW` (passthrough de eventos LangGraph).
 
-`AgentService.stream()` feeds the adapter and maps events to SSE:
+### Frontend (`web/`)
 
-| NarrationEvent type | SSE `_event` | payload fields |
-|---|---|---|
-| `tool_call` (stage=start) | `step` | `status="running"`, `text`, `icon`, `tool_name`, `block_id` |
-| `tool_result` | `step` | `status="done"`, `text`, `icon`, `tool_name`, `duration_ms` |
-| `error` | `step` | `status="error"`, `text`, `icon`, `tool_name`, `error` |
-| `reasoning_started` | `step` | `status="thinking"`, `text`, `icon` |
-| `run_finished` | — | terminates loop, triggers `done` event |
-| `str` (token) | — | accumulated into answer buffer |
-| final | `done` | `answer` |
+Página estática servida pelo FastAPI, sem build step:
+
+- `index.html` — 4 painéis: chat, estado compartilhado (`proverbs`), tool calls, log de eventos AG-UI.
+- `app.js` — `new HttpAgent({ url: "/agent" })` + `agent.subscribe(subscriber)`.
+  O subscriber implementa um handler por categoria (`onTextMessageContentEvent`,
+  `onToolCallStartEvent`, `onStateSnapshotEvent`, `onCustomEvent`, …) e o catch-all
+  `onEvent` loga cada evento no painel e no `console`.
+- `styles.css` — estilo dos painéis.
+- Envio: `agent.addMessage({id, role:"user", content})` + `agent.runAgent({runId})`.
+- HITL: ao receber `CUSTOM`/`on_interrupt`, mostra modal; aprovar/rejeitar chama
+  `agent.runAgent({ forwardedProps: { command: { resume: { approved } } } })`.
 
 ### Adding tools
 
-1. Create `app/tools/my_tool.py` using `@tool` from `langchain_core.tools`
-2. Attach `NarrationMeta` for streaming labels:
+1. Crie `app/tools/my_tool.py` com `@tool` do `langchain_core.tools`.
+2. Registre em `app/registries/tool_registry.py` → `get_local_tools()`.
 
-```python
-from app.tools import NarrationMeta
+Não há metadados de narração — o streaming (`TOOL_CALL_*`) é automático.
 
-object.__setattr__(my_tool, "narration", NarrationMeta(
-    icon="🔧",
-    announce_template="Executando {arg}...",
-    done_label="Concluído",
-    error_label="Falhou",
-))
-```
+- Estado compartilhado: uma tool muta o estado retornando
+  `Command(update={"<chave>": ..., "messages": [ToolMessage(...)]})` (ver
+  `add_proverb`/`set_proverbs` em `app/tools/agui_demo_tools.py`, com
+  `InjectedState` / `InjectedToolCallId`).
+- Human-in-the-loop: chame `interrupt(value)` (`langgraph.types`) dentro da tool
+  (ver `request_approval`); a retomada vem por `Command(resume=...)`.
 
-3. Register in `app/registries/tool_registry.py` → `get_local_tools()`
-
-`web_search` and `web_extract` (Tavily) are loaded only when `TAVILY_API_KEY` is set.
-
-### Tool metadata fallback
-
-`get_tool_narration()` in `app/tools/__init__.py` prefers `.narration` (NarrationMeta) and falls back to the LangChain `.metadata` dict (`step_label`, `step_done_label`, `step_icon`, etc.) for backward compatibility.
+`web_search` / `web_extract` (Tavily) são carregadas apenas quando `TAVILY_API_KEY` está setada.
 
 ### LLM provider
 
-`app/services/llm_service.py` — single place to swap providers. Currently: Gemini only (`ChatGoogleGenerativeAI`).
+`app/services/llm_service.py` — único ponto para trocar de provider. Atual: Gemini (`ChatGoogleGenerativeAI`).
 
-### Error classification
+### Erros
 
-`app/exceptions.py` defines `QuotaExceededError`, `ProviderAuthError`, `AgentRuntimeError`. `agent_service.py` inspects HTTP status codes and re-raises as domain errors. FastAPI handlers in `app/main.py` map these to 503/502/500.
+A integração oficial emite `RUN_ERROR` no stream. Não há mais classificação de erro
+customizada (`app/exceptions.py` foi removido).
 
 ## Environment variables
 
@@ -148,4 +156,4 @@ Copy `.env.example` to `.env`. Required keys:
 | `GEMINI_API_KEY` | — | Required (Gemini provider) |
 | `GEMINI_MODEL` | `gemini-3.1-flash-lite` | Model name |
 | `TAVILY_API_KEY` | — | Enables `web_search` / `web_extract` tools |
-| `MAX_TOOL_CALLS` | `10` | Per-request tool call cap |
+| `MAX_TOOL_CALLS` | `10` | Mantida em `config.py`, atualmente não usada (o `create_react_agent` usa seu próprio `recursion_limit`) |

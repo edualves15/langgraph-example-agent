@@ -4,8 +4,6 @@ from typing import Literal, Optional
 
 from langchain_core.tools import tool
 
-from app.tools import NarrationMeta
-
 
 _WEEKDAY_NAMES_EN = {
     0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday",
@@ -588,64 +586,3 @@ def list_dates_in_range(
         "count": len(result_dates),
         "filter_applied": filter_description,
     }
-
-
-# ---------------------------------------------------------------------------
-# NarrationMeta
-# ---------------------------------------------------------------------------
-
-object.__setattr__(get_today_info, "narration", NarrationMeta(
-    icon="📅",
-    announce_template="Consultando data de hoje",
-    done_label="Data atual obtida",
-    error_label="Falha ao consultar data",
-))
-
-object.__setattr__(get_date_details, "narration", NarrationMeta(
-    icon="📅",
-    announce_template="Analisando o dia {date_str}",
-    done_label="Detalhes da data obtidos",
-    error_label="Falha ao consultar data",
-))
-
-object.__setattr__(calculate_date_difference, "narration", NarrationMeta(
-    icon="📅",
-    announce_template="Medindo o intervalo entre {start_date} e {end_date}",
-    done_label="Diferença calculada",
-    error_label="Falha no cálculo de datas",
-))
-
-object.__setattr__(shift_date, "narration", NarrationMeta(
-    icon="📅",
-    announce_template="Calculando a data {amount} {unit} a partir de {base_date}",
-    done_label="Data resultante calculada",
-    error_label="Falha no deslocamento de data",
-))
-
-object.__setattr__(count_business_days, "narration", NarrationMeta(
-    icon="📅",
-    announce_template="Contando os dias úteis entre {start_date} e {end_date}",
-    done_label="Dias úteis contados",
-    error_label="Falha na contagem de dias úteis",
-))
-
-object.__setattr__(add_business_days, "narration", NarrationMeta(
-    icon="📅",
-    announce_template="Avançando {business_days} dias úteis desde {start_date}",
-    done_label="Prazo calculado",
-    error_label="Falha no cálculo de prazo",
-))
-
-object.__setattr__(find_next_weekday, "narration", NarrationMeta(
-    icon="📅",
-    announce_template="Procurando a {direction} de {weekday}",
-    done_label="Dia da semana encontrado",
-    error_label="Falha ao buscar dia da semana",
-))
-
-object.__setattr__(list_dates_in_range, "narration", NarrationMeta(
-    icon="📅",
-    announce_template="Listando as datas entre {start_date} e {end_date}",
-    done_label="Datas listadas",
-    error_label="Falha ao listar datas",
-))

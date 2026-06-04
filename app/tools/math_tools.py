@@ -4,8 +4,6 @@ from typing import Union
 
 from langchain_core.tools import tool
 
-from app.tools import NarrationMeta
-
 
 Number = Union[int, float]
 
@@ -103,11 +101,3 @@ def calculate_math_expression(expression: str) -> str:
     result = _safe_eval_math_node(tree.body)
 
     return str(result)
-
-
-object.__setattr__(calculate_math_expression, "narration", NarrationMeta(
-    icon="🔢",
-    announce_template="Resolvendo {expression}",
-    done_label="Cálculo concluído",
-    error_label="Cálculo falhou",
-))

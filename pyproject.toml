@@ -15,7 +15,8 @@ dependencies = [
   "httpx>=0.28.1",
   "langchain-google-genai>=4.2.4",
   "langchain-openai>=1.2.2",
-  "langchain-tavily>=0.2.18"
+  "langchain-tavily>=0.2.18",
+  "ag-ui-langgraph[fastapi]>=0.0.37"
 ]
 
 [project.optional-dependencies]

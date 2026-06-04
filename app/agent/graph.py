@@ -1,22 +1,30 @@
-from langgraph.graph import END, START, StateGraph
+from langchain_core.messages import SystemMessage
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.prebuilt import create_react_agent
 
-from app.agent.edges import should_continue
-from app.agent.nodes import build_agent_node, build_tool_node
+from app.agent.prompts import get_system_prompt
 from app.agent.state import AgentState
 from app.registries.tool_registry import get_local_tools
 from app.services.llm_service import get_llm
 
 
-async def build_graph():
-    tools = get_local_tools()
-    tools_by_name = {t.name: t for t in tools}
-    llm_with_tools = get_llm().bind_tools(tools)
+def _prompt(state: AgentState) -> list:
+    """Prompt dinâmico: injeta o system prompt (com a data de hoje) a cada chamada."""
+    return [SystemMessage(content=get_system_prompt()), *state["messages"]]
 
-    graph = StateGraph(AgentState)
-    graph.add_node("agent", build_agent_node(llm_with_tools, tools_by_name))
-    graph.add_node("tools", build_tool_node(tools_by_name))
-    graph.add_edge(START, "agent")
-    graph.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
-    graph.add_edge("tools", "agent")
 
-    return graph.compile(), tools
+def build_graph() -> CompiledStateGraph:
+    """Constrói o grafo oficial (ReAct) compatível com a integração AG-UI.
+
+    - `create_react_agent`: loop oficial agente↔ferramentas.
+    - `state_schema=AgentState`: adiciona o estado compartilhado `proverbs`.
+    - `checkpointer=MemorySaver`: persiste threads (requisito para human-in-the-loop).
+    """
+    return create_react_agent(
+        model=get_llm(),
+        tools=get_local_tools(),
+        prompt=_prompt,
+        state_schema=AgentState,
+        checkpointer=MemorySaver(),
+    )

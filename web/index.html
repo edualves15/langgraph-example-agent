@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AG-UI × LangGraph — Demo oficial</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">⚡</span>
+      <div>
+        <h1>AG-UI × LangGraph</h1>
+        <p>Implementação oficial do protocolo Agent-User Interaction</p>
+      </div>
+    </div>
+    <div class="meta">
+      <span id="status" class="status idle">idle</span>
+      <code id="thread" class="thread"></code>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- Coluna do chat -->
+    <section class="panel chat-panel">
+      <div class="panel-head">💬 Chat</div>
+      <div id="chat" class="chat"></div>
+
+      <div class="suggestions" id="suggestions">
+        <button data-prompt="Quanto é (15 * 4) + 100 / 5?">🔢 Cálculo</button>
+        <button data-prompt="Que dia é hoje e quantos dias úteis faltam até 31/12/2026?">📅 Datas</button>
+        <button data-prompt="Adicione um provérbio original sobre paciência.">🧩 Estado compartilhado</button>
+        <button data-prompt="Quero enviar um e-mail ao meu chefe pedindo aumento. Peça minha aprovação antes de enviar.">🙋 Aprovação humana</button>
+      </div>
+
+      <form id="composer" class="composer">
+        <input id="input" type="text" autocomplete="off"
+               placeholder="Pergunte algo… (ex.: quanto é 15 * 4?)" />
+        <button id="send" type="submit">Enviar</button>
+      </form>
+    </section>
+
+    <!-- Coluna lateral -->
+    <aside class="side">
+      <!-- Estado compartilhado -->
+      <section class="panel">
+        <div class="panel-head">🧩 Estado compartilhado <small>STATE_SNAPSHOT / STATE_DELTA</small></div>
+        <div class="panel-body">
+          <h4>proverbs</h4>
+          <ul id="proverbs" class="proverbs"><li class="empty">— vazio —</li></ul>
+        </div>
+      </section>
+
+      <!-- Tool calls -->
+      <section class="panel">
+        <div class="panel-head">🛠️ Tool calls <small>TOOL_CALL_*</small></div>
+        <div id="tools" class="panel-body tools"><div class="empty">Nenhuma ferramenta executada ainda.</div></div>
+      </section>
+
+      <!-- Log de eventos AG-UI -->
+      <section class="panel grow">
+        <div class="panel-head">
+          📡 Eventos AG-UI <small>verifique também o Console / Network</small>
+          <button id="clear-log" class="ghost" title="Limpar log">limpar</button>
+        </div>
+        <div id="log" class="panel-body log"></div>
+      </section>
+    </aside>
+  </main>
+
+  <!-- Modal de aprovação (human-in-the-loop) -->
+  <div id="approval" class="approval hidden">
+    <div class="approval-card">
+      <div class="approval-icon">🙋</div>
+      <h3>Aprovação necessária</h3>
+      <p id="approval-text"></p>
+      <div class="approval-actions">
+        <button id="approve" class="primary">✅ Aprovar</button>
+        <button id="reject" class="danger">❌ Rejeitar</button>
+      </div>
+      <p class="approval-hint">Retomada via <code>forwardedProps.command.resume</code></p>
+    </div>
+  </div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
