@@ -157,3 +157,6 @@ html, body {
 .approval button.danger { background: var(--danger); color: #2b0907; }
 .approval-hint { color: var(--muted); font-size: 11px; margin-top: 16px; }
 .approval-hint code { font-family: var(--mono); }
+.email-draft { text-align: left; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; font-size: 13px; }
+.email-draft .k { color: var(--muted); margin-right: 6px; }
+.email-draft .email-body { margin: 10px 0 0; white-space: pre-wrap; word-wrap: break-word; font-family: inherit; border-top: 1px solid var(--border); padding-top: 10px; }

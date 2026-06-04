@@ -65,18 +65,22 @@ def set_proverbs(
 
 
 @tool
-def request_approval(action: str) -> str:
-    """Solicita aprovação humana antes de executar uma ação sensível.
+def send_email(to: str, subject: str, body: str) -> str:
+    """Envia um e-mail. EXIGE aprovação humana antes do envio (human-in-the-loop).
 
-    Use SEMPRE que o usuário pedir para realizar uma ação que exija confirmação
-    explícita (ex.: enviar um e-mail, apagar dados, confirmar uma compra). A
-    execução do agente é pausada (human-in-the-loop) até o usuário aprovar ou
-    rejeitar; só prossiga com a ação após a aprovação.
+    Use quando o usuário pedir para enviar um e-mail. Monte você mesmo um rascunho
+    completo (destinatário, assunto e corpo) com base no pedido — não interrompa
+    para perguntar detalhes que você consegue inferir. A execução do agente é
+    pausada automaticamente para o usuário aprovar ou rejeitar o envio; só
+    considere o e-mail enviado após a aprovação.
     """
     decision = interrupt(
         {
-            "action": action,
-            "question": f"Você aprova a seguinte ação? {action}",
+            "action": "send_email",
+            "to": to,
+            "subject": subject,
+            "body": body,
+            "question": f"Enviar este e-mail para {to}?",
         }
     )
 
@@ -87,5 +91,5 @@ def request_approval(action: str) -> str:
         approved = bool(decision)
 
     if approved:
-        return f"Ação APROVADA pelo usuário: {action}. Pode prosseguir."
-    return f"Ação REJEITADA pelo usuário: {action}. Não execute."
+        return f"E-mail enviado para {to} com o assunto '{subject}'."
+    return f"Envio cancelado pelo usuário. O e-mail para {to} NÃO foi enviado."

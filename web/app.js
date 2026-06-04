@@ -4,6 +4,10 @@
 // nomes de campos canônicos (type em SCREAMING_SNAKE_CASE, campos em camelCase).
 import { HttpAgent } from "https://esm.sh/@ag-ui/client@0.0.55";
 
+// O bundle ESM do @ag-ui/client desestrutura `fetch` de globalThis perdendo o
+// vínculo com Window. Re-bind antes de qualquer uso da biblioteca.
+globalThis.fetch = globalThis.fetch.bind(globalThis);
+
 // ---------------------------------------------------------------------------
 // Setup do agente oficial — aponta para o endpoint AG-UI exposto pelo FastAPI.
 // ---------------------------------------------------------------------------
@@ -195,8 +199,19 @@ function showApproval(value) {
   if (typeof v === "string") {
     try { v = JSON.parse(v); } catch { /* mantém string */ }
   }
-  const text = (v && typeof v === "object" && (v.question || v.action)) || v || "Confirmar ação?";
-  approvalText.textContent = typeof text === "string" ? text : JSON.stringify(text);
+
+  if (v && typeof v === "object" && v.action === "send_email") {
+    // Demo de envio de e-mail: mostra o rascunho completo para aprovação.
+    approvalText.innerHTML =
+      `<div class="email-draft">` +
+      `<div><span class="k">Para:</span> ${escapeHtml(v.to || "")}</div>` +
+      `<div><span class="k">Assunto:</span> ${escapeHtml(v.subject || "")}</div>` +
+      `<pre class="email-body">${escapeHtml(v.body || "")}</pre>` +
+      `</div>`;
+  } else {
+    const text = (v && typeof v === "object" && (v.question || v.action)) || v || "Confirmar ação?";
+    approvalText.textContent = typeof text === "string" ? text : JSON.stringify(text);
+  }
   approvalEl.classList.remove("hidden");
 }
 

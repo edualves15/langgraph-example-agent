@@ -133,8 +133,8 @@ Não há metadados de narração — o streaming (`TOOL_CALL_*`) é automático.
   `Command(update={"<chave>": ..., "messages": [ToolMessage(...)]})` (ver
   `add_proverb`/`set_proverbs` em `app/tools/agui_demo_tools.py`, com
   `InjectedState` / `InjectedToolCallId`).
-- Human-in-the-loop: chame `interrupt(value)` (`langgraph.types`) dentro da tool
-  (ver `request_approval`); a retomada vem por `Command(resume=...)`.
+- Human-in-the-loop: chame `interrupt(value)` (`langgraph.types`) dentro da própria
+  tool de ação (ver `send_email`); a retomada vem por `Command(resume=...)`.
 
 `web_search` / `web_extract` (Tavily) são carregadas apenas quando `TAVILY_API_KEY` está setada.
 

@@ -11,7 +11,7 @@ from app.tools.calendar_tools import (
     list_dates_in_range,
     shift_date,
 )
-from app.tools.agui_demo_tools import add_proverb, request_approval, set_proverbs
+from app.tools.agui_demo_tools import add_proverb, send_email, set_proverbs
 from app.tools.math_tools import calculate_math_expression
 
 CALENDAR_TOOLS = [
@@ -26,7 +26,7 @@ CALENDAR_TOOLS = [
 ]
 
 # Ferramentas que demonstram estado compartilhado (STATE_*) e human-in-the-loop.
-AGUI_DEMO_TOOLS = [add_proverb, set_proverbs, request_approval]
+AGUI_DEMO_TOOLS = [add_proverb, set_proverbs, send_email]
 
 
 def get_local_tools() -> list[BaseTool]:
