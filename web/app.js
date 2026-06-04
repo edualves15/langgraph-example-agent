@@ -3,6 +3,7 @@
 // Cada evento recebido é logado no painel e no console do navegador, com os
 // nomes de campos canônicos (type em SCREAMING_SNAKE_CASE, campos em camelCase).
 import { HttpAgent } from "https://esm.sh/@ag-ui/client@0.0.55";
+import { renderMarkdown } from "./markdown.js";
 
 // O bundle ESM do @ag-ui/client desestrutura `fetch` de globalThis perdendo o
 // vínculo com Window. Re-bind antes de qualquer uso da biblioteca.
@@ -103,6 +104,7 @@ function buildUserWrapper(text) {
 // ── Bloco do agente ──
 
 let pendingAgentBlock = null; // criado em RUN_STARTED, consumido no 1º TEXT_MESSAGE_START
+let runBubble = null;         // bolha única do run atual (mostra só a mensagem final)
 let runStartTime = null;
 let runTimerInterval = null;
 let currentAction = "pensando";
@@ -205,64 +207,6 @@ function escapeHtml(s) {
   return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 }
 
-// ── Markdown formatter (leve, sem libs externas) ──
-const MD = {
-  format(src) {
-    let h = escapeHtml(src);
-
-    // 1. Code blocks — proteger com placeholder
-    const blocks = [];
-    h = h.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
-      blocks.push("<pre><code>" + code.trim() + "</code></pre>");
-      return "\x00B" + (blocks.length - 1) + "\x00";
-    });
-
-    // 2. Inline code — proteger
-    const inlines = [];
-    h = h.replace(/`([^`]+)`/g, (_, code) => {
-      inlines.push("<code>" + code + "</code>");
-      return "\x00I" + (inlines.length - 1) + "\x00";
-    });
-
-    // 3. Horizontal rules
-    h = h.replace(/^[-*_]{3,}\s*$/gm, "<hr>");
-
-    // 4. Blockquotes (> text)
-    h = h.replace(/^&gt; (.+)$/gm, "<blockquote><p>$1</p></blockquote>");
-    h = h.replace(/<\/blockquote>\n<blockquote>/g, "\n");
-
-    // 5. Headers
-    h = h.replace(/^### (.+)$/gm, "<h4>$1</h4>");
-    h = h.replace(/^## (.+)$/gm, "<h3>$1</h3>");
-    h = h.replace(/^# (.+)$/gm, "<h2>$1</h2>");
-
-    // 6. Lists (* or -)
-    h = h.replace(/^[\*-] (.+)$/gm, "<li>$1</li>");
-    h = h.replace(/((?:<li>.*<\/li>\n?)+)/g, "<ul>$1</ul>");
-
-    // 7. Bold
-    h = h.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-
-    // 8. Italic — single * pairs (bold já consumiu os **)
-    h = h.replace(/\*(.+?)\*/g, "<em>$1</em>");
-
-    // 9. Restore inline code + code blocks
-    h = h.replace(/\x00I(\d+)\x00/g, (_, i) => inlines[+i]);
-    h = h.replace(/\x00B(\d+)\x00/g, (_, i) => blocks[+i]);
-
-    // 10. Paragraphs — só envolve texto, preserva blocos HTML intactos
-    h = h.split(/\n\n+/).map(block => {
-      const t = block.trim();
-      if (!t) return "";
-      // Bloco HTML (h2-h4, ul, ol, hr, blockquote, pre) — não encapsular
-      if (/^<(h[2-4]|ul|ol|hr|blockquote|pre)\b/.test(t)) return block;
-      return "<p>" + block.replace(/\n/g, "<br>") + "</p>";
-    }).join("");
-
-    return h;
-  },
-};
-
 function renderProverbs(proverbs) {
   proverbsEl.innerHTML = "";
   if (!proverbs || proverbs.length === 0) {
@@ -343,14 +287,15 @@ const subscriber = {
     runTimerInterval = null;
     const total = formatElapsed(Date.now() - runStartTime);
     runStartTime = null;
-    for (const [, b] of assistantBubbles) {
-      setAgentStatus(b.wrapper, "", "Agent (" + total + ")", "");
-    }
+    if (runBubble) setAgentStatus(runBubble.wrapper, "", "Agent (" + total + ")", "");
     if (pendingAgentBlock) {
+      // Run sem texto (ex.: só tool calls): descarta o spinner pendente.
       pendingAgentBlock.wrapper.remove();
       pendingAgentBlock = null;
     }
     finalizeRun("done");
+    runBubble = null;
+    assistantBubbles.clear();
   },
   onRunErrorEvent: ({ event }) => {
     clearInterval(runTimerInterval);
@@ -361,32 +306,47 @@ const subscriber = {
       pendingAgentBlock = null;
     }
     finalizeRun("error");
-    const b = getAssistantBubble("error-" + Date.now());
+    const b = runBubble || getAssistantBubble("error-" + Date.now());
+    b.el.classList.remove("streaming");
     b.body.textContent = "⚠️ " + (event.message || "Erro na execução.");
+    runBubble = null;
+    assistantBubbles.clear();
   },
 
-  // Mensagens de texto (streaming)
+  // Mensagens de texto (streaming).
+  // Uma interação AG-UI = um run (RUN_STARTED→RUN_FINISHED, mesmo runId) e pode
+  // conter VÁRIAS mensagens (cada uma com seu messageId): um preâmbulo que acompanha
+  // a tool call + a resposta final após o resultado. Mantemos UMA bolha por run e,
+  // a cada nova mensagem, SUBSTITUÍMOS o conteúdo — assim a bolha converge para a
+  // mensagem final (a AIMessage sem tool calls, antes do RUN_FINISHED), descartando
+  // preâmbulos. O protocolo não marca "é a última"; a regra estrutural é substituir.
   onTextMessageStartEvent: ({ event }) => {
     currentAction = "escrevendo resposta";
     if (pendingAgentBlock) {
-      const entry = { el: pendingAgentBlock.bubble, body: pendingAgentBlock.bubble, wrapper: pendingAgentBlock.wrapper, raw: pendingAgentBlock.raw };
-      assistantBubbles.set(event.messageId, entry);
+      // Promove o spinner do RUN_STARTED a bolha do run.
+      runBubble = { el: pendingAgentBlock.bubble, body: pendingAgentBlock.bubble, wrapper: pendingAgentBlock.wrapper, raw: "" };
       pendingAgentBlock = null;
-    } else {
-      getAssistantBubble(event.messageId);
+    } else if (!runBubble) {
+      runBubble = getAssistantBubble(event.messageId);
     }
+    // Nova mensagem assume a bolha: zera o conteúdo (descarta a anterior/preâmbulo).
+    runBubble.raw = "";
+    runBubble.body.innerHTML = "";
+    runBubble.el.classList.add("streaming");
+    assistantBubbles.set(event.messageId, runBubble);
   },
   onTextMessageContentEvent: ({ event }) => {
-    const b = getAssistantBubble(event.messageId);
+    const b = assistantBubbles.get(event.messageId) || runBubble;
+    if (!b) return;
     b.raw += event.delta;
-    b.body.innerHTML = MD.format(b.raw) + '<i class="blink"></i>';
+    b.body.innerHTML = renderMarkdown(b.raw) + '<i class="blink"></i>';
     chatEl.scrollTop = chatEl.scrollHeight;
   },
   onTextMessageEndEvent: ({ event }) => {
     const b = assistantBubbles.get(event.messageId);
     if (b) {
       b.el.classList.remove("streaming");
-      b.body.innerHTML = MD.format(b.raw);
+      b.body.innerHTML = renderMarkdown(b.raw);
     }
   },
 

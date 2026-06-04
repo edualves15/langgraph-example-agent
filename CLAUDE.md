@@ -120,10 +120,25 @@ Página estática servida pelo FastAPI, sem build step:
   O subscriber implementa um handler por categoria (`onTextMessageContentEvent`,
   `onToolCallStartEvent`, `onStateSnapshotEvent`, `onCustomEvent`, …) e o catch-all
   `onEvent` loga cada evento no painel e no `console`.
-- `styles.css` — estilo dos painéis.
+- `markdown.js` — renderizador Markdown próprio (sem libs), usado nos balões do agente.
+  Subconjunto prático/robusto (~GFM): headings 1–6, bold/itálico/bold-itálico,
+  strikethrough, code inline/fenced, blockquote (multilinha/aninhado), listas
+  ordenadas/não-ordenadas/aninhadas, links, imagens, tabelas, hr, quebras. Escapa todo
+  texto e sanitiza URLs (só http/https/mailto/relativas) — anti-XSS. API:
+  `renderMarkdown(src, { correct })`; `correct` (default `LENIENT=true`) liga um pré-passo
+  corretor de deslizes do agente (espaço após `#`, etc.). Passe `correct:false` para
+  render estrito.
+- `styles.css` — estilo dos painéis e dos elementos Markdown do balão.
 - Envio: `agent.addMessage({id, role:"user", content})` + `agent.runAgent({runId})`.
 - HITL: ao receber `CUSTOM`/`on_interrupt`, mostra modal; aprovar/rejeitar chama
   `agent.runAgent({ forwardedProps: { command: { resume: { approved } } } })`.
+- **Uma bolha por `runId`.** Uma "interação" = um run (`RUN_STARTED`→`RUN_FINISHED`,
+  mesmo `runId`) e pode conter VÁRIAS mensagens (cada uma com seu `messageId`): um
+  preâmbulo junto da tool call + a resposta final após o resultado. O chat mantém **uma
+  única bolha por run** e, a cada novo `TEXT_MESSAGE_START`, **substitui** o conteúdo —
+  convergindo para a mensagem final e descartando preâmbulos (`runBubble` em `app.js`,
+  resetado em `RUN_FINISHED`/`RUN_ERROR`). HITL atravessa dois runs → duas bolhas
+  (correto: execuções separadas pela aprovação).
 
 ### Adding tools
 

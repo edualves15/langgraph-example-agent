@@ -386,6 +386,11 @@ body {
   padding: 0;
   font-size: 0.88em;
 }
+.msg-wrapper.assistant .bubble h1 {
+  font-size: 1.25em;
+  font-weight: 700;
+  margin: 1.8em 0 0.4em;
+}
 .msg-wrapper.assistant .bubble h2 {
   font-size: 1.1em;
   font-weight: 700;
@@ -401,12 +406,35 @@ body {
   font-weight: 700;
   margin: 1.3em 0 0.25em;
 }
-.msg-wrapper.assistant .bubble ul {
+.msg-wrapper.assistant .bubble h5 {
+  font-size: 0.95em;
+  font-weight: 700;
+  margin: 1.2em 0 0.25em;
+}
+.msg-wrapper.assistant .bubble h6 {
+  font-size: 0.9em;
+  font-weight: 700;
+  color: var(--muted);
+  margin: 1.1em 0 0.25em;
+}
+.msg-wrapper.assistant .bubble :is(h1, h2, h3, h4, h5, h6):first-child {
+  margin-top: 0;
+}
+.msg-wrapper.assistant .bubble ul,
+.msg-wrapper.assistant .bubble ol {
   margin: 0.5em 0;
-  padding-left: 1.5em;
+  padding-left: 1.6em;
+}
+/* Listas aninhadas: compactas, sem margem dupla */
+.msg-wrapper.assistant .bubble li > ul,
+.msg-wrapper.assistant .bubble li > ol {
+  margin: 0.2em 0;
 }
 .msg-wrapper.assistant .bubble li {
   margin-bottom: 0.3em;
+}
+.msg-wrapper.assistant .bubble li > p {
+  margin: 0 0 0.4em;
 }
 .msg-wrapper.assistant .bubble hr {
   border: none;
@@ -422,6 +450,48 @@ body {
 }
 .msg-wrapper.assistant .bubble blockquote p {
   margin: 0.3em 0;
+}
+.msg-wrapper.assistant .bubble del,
+.msg-wrapper.assistant .bubble s {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.msg-wrapper.assistant .bubble a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.msg-wrapper.assistant .bubble a:hover {
+  border-bottom-color: var(--accent);
+}
+.msg-wrapper.assistant .bubble img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 0.5em 0;
+}
+/* Tabelas */
+.msg-wrapper.assistant .bubble table {
+  border-collapse: collapse;
+  margin: 0.75em 0;
+  width: auto;
+  max-width: 100%;
+  display: block;
+  overflow-x: auto;
+  font-size: 0.95em;
+}
+.msg-wrapper.assistant .bubble th,
+.msg-wrapper.assistant .bubble td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+}
+.msg-wrapper.assistant .bubble thead th {
+  background: var(--panel-2);
+  font-weight: 700;
+}
+.msg-wrapper.assistant .bubble tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--panel-2) 45%, transparent);
 }
 
 /* Streaming cursor */
