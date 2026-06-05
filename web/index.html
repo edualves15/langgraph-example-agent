@@ -1,104 +1,154 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AG-UI × LangGraph — Demo oficial</title>
-  <link rel="stylesheet" href="/styles.css" />
-</head>
-<body>
-  <header class="topbar">
-    <div class="brand">
-      <span class="logo icon" data-icon="logo"></span>
-      <div>
-        <h1>AG-UI × LangGraph</h1>
-        <p>Implementação oficial do protocolo Agent-User Interaction</p>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AG-UI × LangGraph — Demo oficial</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo icon" data-icon="logo"></span>
+        <div>
+          <h1>AG-UI × LangGraph</h1>
+          <p>Implementação oficial do protocolo Agent-User Interaction</p>
+        </div>
       </div>
-    </div>
-    <div class="meta">
-      <span id="status" class="status idle mono">idle</span>
-      <code id="thread" class="thread mono"></code>
-    </div>
-  </header>
+      <div class="meta">
+        <span id="status" class="status idle mono">idle</span>
+        <code id="thread" class="thread mono"></code>
+      </div>
+    </header>
 
-  <main class="layout">
-    <!-- Coluna do chat -->
-    <section class="panel chat-panel is-empty">
-      <div class="panel-head"><span class="panel-head-icon icon" data-icon="chat"></span>Chat</div>
-      <div id="chat" class="chat">
-        <div class="chat-start" id="chat-start">
-          <div class="empty-prompt">
-            <p class="empty-prompt-icon icon" data-icon="chat" data-icon-size="48"></p>
-            <h2>O que você quer fazer hoje?</h2>
-            <p class="empty-prompt-sub">Faça uma pergunta para começar.</p>
-          </div>
-          <!-- Slot genérico de sugestões (vazio: cliente AG-UI não conhece o agente). -->
-          <div class="suggestions" id="suggestions"></div>
-          <form id="composer" class="composer">
-            <div class="composer-wrap">
-              <textarea id="input" rows="1" autocomplete="off"
-                   placeholder="Pergunte algo…"></textarea>
-              <button id="send" type="submit" title="Enviar" class="icon" data-icon="send" disabled></button>
+    <main class="layout">
+      <!-- Coluna do chat -->
+      <section class="panel chat-panel is-empty">
+        <div class="panel-head">
+          <span class="panel-head-icon icon" data-icon="chat"></span>Chat
+        </div>
+        <div id="chat" class="chat">
+          <div class="chat-start" id="chat-start">
+            <div class="empty-prompt">
+              <p
+                class="empty-prompt-icon icon"
+                data-icon="chat"
+                data-icon-size="48"
+              ></p>
+              <h2>O que você quer fazer hoje?</h2>
+              <p class="empty-prompt-sub">Faça uma pergunta para começar.</p>
             </div>
-          </form>
-        </div>
-      </div>
-    </section>
-
-    <!-- Coluna lateral (painel de debug com abas) -->
-    <aside class="side">
-      <section class="panel">
-        <div class="tabs" role="tablist">
-          <button class="tab active" data-tab="state" role="tab"><span class="tab-icon state-icon icon" data-icon="state"></span>Estado <span class="badge" id="badge-state">0</span></button>
-          <button class="tab" data-tab="tools" role="tab"><span class="tab-icon tools-icon icon" data-icon="tools"></span>Tool calls <span class="badge" id="badge-tools">0</span></button>
-          <button class="tab" data-tab="events" role="tab"><span class="tab-icon events-icon icon" data-icon="events"></span>Eventos <span class="badge" id="badge-events">0</span></button>
-        </div>
-
-        <div class="tab-panels">
-          <!-- Estado compartilhado — renderizado genericamente do STATE_SNAPSHOT. -->
-          <div class="tab-content active" data-tab="state">
-            <div id="state-list" class="state-list"><div class="tab-empty">Nenhum estado compartilhado</div></div>
-          </div>
-
-          <!-- Tool calls -->
-          <div class="tab-content" data-tab="tools">
-            <div id="tools" class="tools"><div class="tab-empty">Nenhuma ferramenta executada</div></div>
-          </div>
-
-          <!-- Log de eventos AG-UI -->
-          <div class="tab-content" data-tab="events">
-            <div id="log" class="log mono"><div class="tab-empty">Nenhum evento ocorrido</div></div>
-            <div class="events-bar panel-foot">
-              <small>verifique também o Console / Network</small>
-              <div class="events-actions">
-                <label class="toggle-detail" title="Exibir payload dos eventos">
-                  <input type="checkbox" id="toggle-detail" checked />
-                  <span>detalhes</span>
-                </label>
-                <button id="copy-log" class="ghost icon-only icon" data-icon="copy" title="Copiar eventos"></button>
-                <button id="clear-log" class="ghost" title="Limpar log">limpar</button>
+            <!-- Slot genérico de sugestões (vazio: cliente AG-UI não conhece o agente). -->
+            <div class="suggestions" id="suggestions"></div>
+            <form id="composer" class="composer">
+              <div class="composer-wrap">
+                <textarea
+                  id="input"
+                  rows="1"
+                  autocomplete="off"
+                  placeholder="Pergunte algo…"
+                ></textarea>
+                <button
+                  id="send"
+                  type="submit"
+                  title="Enviar"
+                  class="icon"
+                  data-icon="send"
+                  disabled
+                ></button>
               </div>
-            </div>
+            </form>
           </div>
         </div>
       </section>
-    </aside>
-  </main>
 
-  <!-- Modal de aprovação (human-in-the-loop) -->
-  <div id="approval" class="approval hidden">
-    <div class="approval-card">
-      <div class="approval-icon icon" data-icon="hand"></div>
-      <h3>Aprovação necessária</h3>
-      <p id="approval-text"></p>
-      <div class="approval-actions">
-        <button id="approve" class="primary"><span class="btn-icon approve-icon icon" data-icon="approve"></span>Aprovar</button>
-        <button id="reject" class="danger"><span class="btn-icon reject-icon icon" data-icon="reject"></span>Rejeitar</button>
+      <!-- Coluna lateral (painel de debug com abas) -->
+      <aside class="side">
+        <section class="panel">
+          <div class="tabs" role="tablist">
+            <button class="tab active" data-tab="state" role="tab">
+              <span class="tab-icon state-icon icon" data-icon="state"></span
+              >Estado <span class="badge" id="badge-state">0</span>
+            </button>
+            <button class="tab" data-tab="tools" role="tab">
+              <span class="tab-icon tools-icon icon" data-icon="tools"></span
+              >Tool calls <span class="badge" id="badge-tools">0</span>
+            </button>
+            <button class="tab" data-tab="events" role="tab">
+              <span class="tab-icon events-icon icon" data-icon="events"></span
+              >Eventos <span class="badge" id="badge-events">0</span>
+            </button>
+          </div>
+
+          <div class="tab-panels">
+            <!-- Estado compartilhado — renderizado genericamente do STATE_SNAPSHOT. -->
+            <div class="tab-content active" data-tab="state">
+              <div id="state-list" class="state-list">
+                <div class="tab-empty">Nenhum estado compartilhado</div>
+              </div>
+            </div>
+
+            <!-- Tool calls -->
+            <div class="tab-content" data-tab="tools">
+              <div id="tools" class="tools">
+                <div class="tab-empty">Nenhuma ferramenta executada</div>
+              </div>
+            </div>
+
+            <!-- Log de eventos AG-UI -->
+            <div class="tab-content" data-tab="events">
+              <div id="log" class="log mono">
+                <div class="tab-empty">Nenhum evento ocorrido</div>
+              </div>
+              <div class="events-bar panel-foot">
+                <small>Verifique também o Console / Network</small>
+                <div class="events-actions">
+                  <label
+                    class="toggle-detail"
+                    title="Exibir payload dos eventos"
+                  >
+                    <input type="checkbox" id="toggle-detail" checked />
+                    <span>Detalhes</span>
+                  </label>
+                  <button
+                    id="copy-log"
+                    class="ghost icon-only icon"
+                    data-icon="copy"
+                    title="Copiar eventos"
+                  ></button>
+                  <button id="clear-log" class="ghost" title="Limpar log">
+                    Limpar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <!-- Modal de aprovação (human-in-the-loop) -->
+    <div id="approval" class="approval hidden">
+      <div class="approval-card">
+        <div class="approval-icon icon" data-icon="hand"></div>
+        <h3>Aprovação necessária</h3>
+        <p id="approval-text"></p>
+        <div class="approval-actions">
+          <button id="approve" class="primary">
+            <span class="btn-icon approve-icon icon" data-icon="approve"></span
+            >Aprovar
+          </button>
+          <button id="reject" class="danger">
+            <span class="btn-icon reject-icon icon" data-icon="reject"></span
+            >Rejeitar
+          </button>
+        </div>
+        <p class="approval-hint">
+          Retomada via <code>forwardedProps.command.resume</code>
+        </p>
       </div>
-      <p class="approval-hint">Retomada via <code>forwardedProps.command.resume</code></p>
     </div>
-  </div>
 
-  <script type="module" src="/app.js"></script>
-</body>
+    <script type="module" src="/app.js"></script>
+  </body>
 </html>
