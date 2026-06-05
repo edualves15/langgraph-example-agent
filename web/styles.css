@@ -963,6 +963,11 @@ body {
   color: var(--muted);
   font-size: var(--fs-md);
   font-style: italic;
+  font-family: var(--mono);
+  display: none;
+}
+.tab-empty:only-child {
+  display: block;
 }
 .ghost {
   background: transparent;
