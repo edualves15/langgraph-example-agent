@@ -172,47 +172,29 @@ function renderState(state) {
     stateEl.innerHTML = `<div class="empty">Nenhum estado compartilhado ainda.</div>`;
     return;
   }
-  bumpBadge("state");
+  // Badge reflete o número real de chaves de estado (não acumula snapshots)
+  setBadge("state", keys.length);
   for (const k of keys) {
     const v = state[k];
     const card = document.createElement("div");
     card.className = "state-card";
 
     // Header com toggle (accordion)
+    const typeLabel = Array.isArray(v) ? "array[" + v.length + "]" : v && typeof v === "object" ? "object" : typeof v;
     card.innerHTML =
       `<div class="s-head" role="button" tabindex="0">` +
         `<span class="tog">▼</span>` +
         `<span class="s-key mono">${escapeHtml(k)}</span>` +
-        `<span class="s-type">${Array.isArray(v) ? "array[" + v.length + "]" : v && typeof v === "object" ? "object" : typeof v}</span>` +
+        `<span class="s-type">${typeLabel}</span>` +
       `</div>` +
       `<div class="s-body"></div>`;
 
     const body = card.querySelector(".s-body");
-
-    if (Array.isArray(v)) {
-      if (v.length === 0) {
-        body.innerHTML = `<span class="empty">[]</span>`;
-      } else {
-        const ul = document.createElement("ul");
-        ul.className = "s-list";
-        for (const item of v) {
-          const it = document.createElement("li");
-          it.textContent = typeof item === "string" ? item : JSON.stringify(item);
-          ul.appendChild(it);
-        }
-        body.appendChild(ul);
-      }
-    } else if (v && typeof v === "object") {
-      const pre = document.createElement("pre");
-      pre.className = "pre-block";
-      pre.textContent = JSON.stringify(v, null, 2);
-      body.appendChild(pre);
-    } else {
-      const span = document.createElement("span");
-      span.className = "s-scalar";
-      span.textContent = String(v);
-      body.appendChild(span);
-    }
+    // Sempre JSON — apresentação técnica e padronizada com tool calls
+    const pre = document.createElement("pre");
+    pre.className = "pre-block";
+    pre.textContent = JSON.stringify(v, null, 2);
+    body.appendChild(pre);
 
     // Accordion toggle
     card.querySelector(".s-head").addEventListener("click", () => {
@@ -640,6 +622,15 @@ function bumpBadge(name) {
   counters[name] += 1;
   badge.textContent = String(counters[name]);
   badge.hidden = false;
+}
+// Define valor absoluto (ex.: número de chaves de estado).
+function setBadge(name, value) {
+  if (!(name in counters)) return;
+  const badge = $("badge-" + name);
+  if (!badge) return;
+  counters[name] = value;
+  badge.textContent = String(value);
+  badge.hidden = value === 0;
 }
 
 tabsEl.addEventListener("click", (e) => {

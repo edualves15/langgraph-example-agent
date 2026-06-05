@@ -807,19 +807,6 @@ body {
 .state-card.collapsed .s-body {
   display: none;
 }
-.state-card .s-list {
-  list-style: disc;
-  margin: 0;
-  padding-left: 18px;
-  font-size: 13px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.state-card .s-scalar {
-  font-size: 13px;
-  color: var(--text);
-}
 /* Toggle chevron — reusa o mesmo do tool-card */
 .state-card .tog {
   font-size: 9px;
