@@ -6,7 +6,7 @@ from langgraph.prebuilt import ToolNode
 
 from app.agent.prompts import get_system_prompt
 from app.agent.state import AgentState
-from app.registries.tool_registry import get_local_tools
+from app.registries.tool_registry import PREDICT_STATE, get_local_tools
 from app.services.llm_service import get_llm
 
 
@@ -64,7 +64,10 @@ def build_graph() -> CompiledStateGraph:
     async def agent_node(state: AgentState) -> dict:
         frontend = _frontend_tool_schemas(state.get("tools") or [], exclude=backend_names)
         model_with_tools = model.bind_tools([*backend_tools, *frontend])
-        response = await model_with_tools.ainvoke(_prompt(state))
+        # `predict_state` (metadata): a lib emite o evento `PredictState` quando uma tool
+        # mapeada é chamada, para a UI prever o estado a partir dos args em streaming.
+        config = {"metadata": {"predict_state": PREDICT_STATE}} if PREDICT_STATE else {}
+        response = await model_with_tools.ainvoke(_prompt(state), config=config)
         return {"messages": [response]}
 
     def route(state: AgentState) -> str:

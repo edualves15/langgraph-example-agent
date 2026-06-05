@@ -58,6 +58,36 @@ const FT_SCHEMAS = FRONTEND_TOOLS.map(({ name, description, parameters }) => ({
 const executedToolCalls = new Set(); // toolCallId já executados no navegador
 let latestMessages = [];             // mensagens reconstruídas (via onMessagesChanged)
 
+// ---------------------------------------------------------------------------
+// Estado preditivo (AG-UI PredictState) — GENÉRICO. O backend emite um CUSTOM
+// "PredictState" com um mapeamento [{state_key, tool, tool_argument}]; enquanto os
+// args dessa tool chegam (streaming), aplicamos `args[tool_argument]` à `state_key`
+// de forma otimista, e o STATE_SNAPSHOT autoritativo reconcilia depois. Sem conhecer
+// o negócio. (Se o provedor não faz streaming de args — ex.: Gemini — é no-op visível.)
+// ---------------------------------------------------------------------------
+let lastState = {};   // último estado autoritativo (snapshot/delta)
+let predicted = {};   // overlay otimista (state_key -> valor)
+let predictMap = [];  // mapeamento vindo do evento PredictState
+
+function applyState() {
+  renderState({ ...lastState, ...predicted });
+}
+
+// Aplica a previsão otimista: se `toolName` está no mapeamento, lê `tool_argument` dos
+// args (parse tolerante a JSON parcial) e o aplica à `state_key`. Genérico.
+function applyPredict(toolName, rawArgs) {
+  if (!predictMap.length || !toolName) return;
+  const entry = predictMap.find((p) => p.tool === toolName);
+  if (!entry) return;
+  let args = rawArgs;
+  if (typeof args === "string") {
+    try { args = JSON.parse(args); } catch { return; } // parcial/inválido → ignora
+  }
+  if (!args || typeof args !== "object" || !(entry.tool_argument in args)) return;
+  predicted[entry.state_key] = args[entry.tool_argument];
+  applyState();
+}
+
 // Cria um bloco INLINE no chat onde uma frontend tool renderiza seu componente
 // interativo. Devolve o container (nó DOM) passado ao handler.
 function createToolUiBlock(toolName) {
@@ -351,6 +381,8 @@ const subscriber = {
     finalizeRun("done");
     runBubble = null;
     assistantBubbles.clear();
+    predicted = {};
+    predictMap = [];
   },
   onRunErrorEvent: ({ event }) => {
     clearInterval(runTimerInterval);
@@ -367,6 +399,8 @@ const subscriber = {
     sendBtn.disabled = !inputEl.value.trim();
     runBubble = null;
     assistantBubbles.clear();
+    predicted = {};
+    predictMap = [];
   },
 
   // Mensagens de texto (streaming).
@@ -481,22 +515,35 @@ const subscriber = {
       const calls = m.toolCalls || m.tool_calls;
       if (!calls) continue;
       for (const call of calls) {
+        const name = call.function?.name || call.name;
+        const rawArgs = call.function?.arguments ?? call.args;
         const t = toolCards.get(call.id);
-        if (!t || t.argsShown) continue;
-        setToolArgs(t, call.function?.arguments ?? call.args);
+        if (t && !t.argsShown) setToolArgs(t, rawArgs);
+        applyPredict(name, rawArgs); // estado preditivo (genérico)
       }
     }
   },
 
-  // Estado compartilhado — renderiza genericamente todo o snapshot.
-  onStateSnapshotEvent: ({ event }) => renderState(event.snapshot),
+  // Estado compartilhado — autoritativo. Atualiza o estado base e descarta a previsão
+  // (reconciliação): o snapshot/delta é a fonte de verdade.
+  onStateSnapshotEvent: ({ event }) => {
+    lastState = event.snapshot || {};
+    predicted = {};
+    applyState();
+  },
   // onStateChanged dá o estado reconstruído (após snapshot OU delta) — fonte única.
-  onStateChanged: ({ state }) => renderState(state),
+  onStateChanged: ({ state }) => {
+    lastState = state || {};
+    predicted = {};
+    applyState();
+  },
 
-  // Human-in-the-loop: interrupt chega como CUSTOM com name "on_interrupt".
+  // CUSTOM: HITL (on_interrupt) e estado preditivo (PredictState).
   onCustomEvent: ({ event }) => {
     if (event.name === "on_interrupt") {
       showApproval(event.value);
+    } else if (event.name === "PredictState") {
+      predictMap = Array.isArray(event.value) ? event.value : [];
     }
   },
 };

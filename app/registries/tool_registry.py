@@ -33,6 +33,14 @@ CALENDAR_TOOLS = [
 # Tools do domínio atual (Restaurante). Trocar de domínio = trocar este bloco.
 RESTAURANT_TOOLS = [get_menu, update_order, get_available_times, create_reservation]
 
+# Estado preditivo (AG-UI PredictState): liga uma chave de estado compartilhado ao
+# argumento de uma tool. A lib emite o evento `PredictState` quando essa tool é chamada
+# e o cliente aplica os args (em streaming) à `state_key` otimisticamente, reconciliando
+# com o STATE_SNAPSHOT depois. Domínio-específico (acompanha RESTAURANT_TOOLS).
+PREDICT_STATE: list[dict] = [
+    {"state_key": "order", "tool": "update_order", "tool_argument": "item_ids"},
+]
+
 
 def get_local_tools() -> list[BaseTool]:
     tools: list[BaseTool] = [

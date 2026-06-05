@@ -90,7 +90,10 @@ de erro**: em qualquer exceção, emite um `RunErrorEvent` (`code="agent_run_err
 evento **canônico** do protocolo para falhas — em vez de derrubar o SSE cru (ver **Erros**).
 `GET /agent/health` (paridade) e `GET /health` são definidos à parte. O `StaticFiles` é
 montado em `/` **por último** para não capturar
-`/agent` e `/health`.
+`/agent` e `/health`. **CORS:** `CORSMiddleware` (FastAPI) permite que qualquer frontend
+AG-UI de outra origem consuma o agente (desacoplamento). Origens via `AG_UI_CORS_ORIGINS`
+(default `*`); por conformidade com a spec, credenciais só ligam com origens explícitas
+(wildcard `*` é incompatível com `allow_credentials=True`).
 
 ### LangGraph graph (`app/agent/graph.py`)
 
@@ -124,7 +127,7 @@ em runtime e executadas no navegador). Estrutura:
 - Texto: `TEXT_MESSAGE_START` (`messageId`,`role`), `TEXT_MESSAGE_CONTENT` (`delta`), `TEXT_MESSAGE_END`.
 - Ferramentas: `TOOL_CALL_START` (`toolCallId`,`toolCallName`), `TOOL_CALL_ARGS` (`delta`), `TOOL_CALL_END`, `TOOL_CALL_RESULT` (`toolCallId`,`content`).
 - Estado: `STATE_SNAPSHOT` (`snapshot`), `STATE_DELTA` (`delta` JSON Patch), `MESSAGES_SNAPSHOT`.
-- Especiais: `CUSTOM` (`name`,`value`) — interrupts chegam como `name="on_interrupt"`; `RAW` (passthrough de eventos LangGraph).
+- Especiais: `CUSTOM` (`name`,`value`) — interrupts chegam como `name="on_interrupt"`; estado preditivo como `name="PredictState"` (`value`=mapeamento `[{state_key,tool,tool_argument}]`); `RAW` (passthrough de eventos LangGraph).
 
 ### Frontend (`web/`)
 
@@ -219,6 +222,12 @@ tools de **backend** (efeito/dado server-side, executadas no nó `tools`).
   `InjectedState` / `InjectedToolCallId` (emite `STATE_SNAPSHOT`/`STATE_DELTA`; o front o
   renderiza genericamente no painel de estado). Exemplo: `update_order` muta `order`
   (campo declarado em `AgentState`), o pedido atual do cliente.
+- **Estado preditivo (`PredictState`):** o `agent_node` injeta `config.metadata.predict_state`
+  (de `PREDICT_STATE` no registry, domínio-específico: liga `order` ← arg `item_ids` de
+  `update_order`). A lib emite o `CUSTOM PredictState`; o front (`app.js`, handler
+  **genérico** `applyPredict`) aplica os args em streaming à `state_key` de forma otimista e
+  reconcilia no `STATE_SNAPSHOT`. **Depende do provedor fazer streaming dos `TOOL_CALL_ARGS`**
+  — com Gemini (args inteiros) é no-op visível, sem prejuízo (o estado segue via snapshot).
 - **Tool de frontend** (executada no **navegador**, não no back): NÃO crie `@tool` no
   back. As tools de UI genéricas já existem em `web/frontend-tools.js` (`present_cards`/
   `present_options`/`confirm_dialog`); o agente as usa passando os dados do domínio. Para
@@ -286,3 +295,4 @@ Copy `.env.example` to `.env`. Required keys:
 | `GEMINI_MODEL` | `gemini-3.1-flash-lite` | Model name |
 | `TAVILY_API_KEY` | — | Enables the Tavily tools (`tavily_search` / `tavily_extract`) |
 | `AG_UI_STREAM_RAW_EVENTS` | `true` | When `false`, omits `RAW` events (LangChain callback passthrough) from the SSE stream |
+| `AG_UI_CORS_ORIGINS` | `*` | Origens permitidas via CORS (CSV). `*` libera todas; com origens explícitas, credenciais são habilitadas. |
