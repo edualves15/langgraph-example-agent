@@ -4,6 +4,7 @@
 // nomes de campos canônicos (type em SCREAMING_SNAKE_CASE, campos em camelCase).
 import { HttpAgent } from "https://esm.sh/@ag-ui/client@0.0.55";
 import { renderMarkdown } from "./markdown.js";
+import { SVG } from "./icons.js";
 
 // Cliente AG-UI 100% GENÉRICO: renderiza apenas com o que o protocolo fornece em
 // runtime (eventos SSE). Não conhece nomes de ferramentas, regras de negócio nem o
@@ -309,7 +310,7 @@ const subscriber = {
     finalizeRun("error");
     const b = runBubble || getAssistantBubble("error-" + Date.now());
     b.el.classList.remove("streaming");
-    b.body.textContent = "⚠️ " + (event.message || "Erro na execução.");
+    b.body.innerHTML = SVG.warning + " " + escapeHtml(event.message || "Erro na execução.");
     runBubble = null;
     assistantBubbles.clear();
   },
@@ -551,6 +552,78 @@ $("composer").addEventListener("submit", (e) => {
 $("suggestions").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-prompt]");
   if (btn) send(btn.dataset.prompt);
+});
+
+// ── Botões da barra de eventos ──
+
+const copyBtn = $("copy-log");
+const toggleDetailChk = $("toggle-detail");
+
+// Injeta SVGs em todos os placeholders de ícone da aplicação.
+function initIcons() {
+  // Top bar
+  document.querySelector(".logo").innerHTML = SVG.logo;
+  document.querySelector(".panel-head-icon").innerHTML = SVG.chat;
+
+  // Empty prompt
+  const emptyIcon = document.querySelector(".empty-prompt-icon");
+  if (emptyIcon) emptyIcon.innerHTML = SVG.chat.replace('width="18" height="18"', 'width="48" height="48"');
+
+  // Send button
+  const sendEl = document.getElementById("send");
+  if (sendEl) sendEl.innerHTML = SVG.send;
+
+  // Tabs do painel lateral
+  document.querySelector(".state-icon").innerHTML = SVG.state;
+  document.querySelector(".tools-icon").innerHTML = SVG.tools;
+  document.querySelector(".events-icon").innerHTML = SVG.events;
+
+  // Modal de aprovação
+  document.querySelector(".approval-icon").innerHTML = SVG.hand;
+  document.querySelector(".approve-icon").innerHTML = SVG.approve;
+  document.querySelector(".reject-icon").innerHTML = SVG.reject;
+
+  // Barra de eventos
+  if (copyBtn) copyBtn.innerHTML = SVG.copy;
+}
+initIcons();
+
+// Estado do modo compacto (só tipos, sem payload).
+let logCompact = false;
+
+// Copiar: extrai o texto de cada linha do log e copia para a área de transferência.
+copyBtn.addEventListener("click", async (e) => {
+  e.stopPropagation();
+  const lines = Array.from(logEl.querySelectorAll(".line"), (el) => {
+    const type = el.querySelector(".etype")?.textContent || "";
+    // Respeita o modo visual: compacto = só tipo; detalhado = tipo + payload.
+    if (logCompact) return type;
+    const payload = el.querySelector(".payload")?.textContent || "";
+    return payload ? `${type} ${payload}` : type;
+  });
+  if (lines.length === 0) return;
+  try {
+    await navigator.clipboard.writeText(lines.join("\n"));
+  } catch {
+    // Fallback para contextos sem Clipboard API.
+    const ta = document.createElement("textarea");
+    ta.value = lines.join("\n");
+    ta.style.cssText = "position:fixed;opacity:0";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+  }
+  // Feedback visual: troca ícone por check durante 1 s.
+  copyBtn.innerHTML = SVG.check;
+  setTimeout(() => { copyBtn.innerHTML = SVG.copy; }, 1000);
+});
+
+// Checkbox "detalhes": controla se o payload é exibido ou não.
+// Marcado = modo detalhado; desmarcado = compacto (só tipos).
+toggleDetailChk.addEventListener("change", () => {
+  logCompact = !toggleDetailChk.checked;
+  logEl.classList.toggle("compact", logCompact);
 });
 
 $("clear-log").addEventListener("click", (e) => {

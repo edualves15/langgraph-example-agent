@@ -79,7 +79,12 @@ body {
   gap: 14px;
 }
 .logo {
-  font-size: 28px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+}
+.logo svg {
+  display: block;
 }
 .brand h1 {
   font-size: 18px;
@@ -169,6 +174,14 @@ body {
 .panel-head .ghost {
   margin-left: auto;
 }
+.panel-head-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+}
+.panel-head-icon svg {
+  display: block;
+}
 .panel-body {
   padding: 12px 14px;
   overflow-y: auto;
@@ -219,9 +232,10 @@ body {
 .empty-prompt {
   text-align: center;
 }
-.empty-prompt-icon {
-  font-size: 48px;
-  margin: 0 0 8px;
+.empty-prompt-icon svg {
+  display: block;
+  margin: 0 auto 8px;
+  color: var(--muted);
 }
 .empty-prompt h2 {
   font-size: 20px;
@@ -589,6 +603,9 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
 }
+#send svg {
+  display: block;
+}
 
 /* Ajustes no estado vazio */
 .chat-start .composer {
@@ -662,6 +679,13 @@ body {
   align-items: center;
   justify-content: center;
 }
+.tab-icon {
+  display: inline-flex;
+  align-items: center;
+}
+.tab-icon svg {
+  display: block;
+}
 
 .tab-panels {
   flex: 1 1 auto;
@@ -690,16 +714,63 @@ body {
   margin-left: 6px;
 }
 
+/* Aba de eventos: barra fixa na base, log com scroll acima. */
+.tab-content[data-tab="events"] {
+  display: none;           /* sobrescrito por .active abaixo */
+  flex-direction: column;
+}
+.tab-content[data-tab="events"].active {
+  display: flex;
+}
+.tab-content[data-tab="events"] .log {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
 .events-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
 }
 .events-bar small {
   color: var(--muted);
   font-family: var(--mono);
   font-size: 10px;
+}
+.events-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.ghost.icon-only {
+  padding: 3px 6px;
+  line-height: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ghost.icon-only svg {
+  display: block;
+}
+/* Checkbox "detalhes" — fundo integrado ao tema escuro. */
+.toggle-detail {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.toggle-detail input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent);
+  color-scheme: dark;
 }
 
 .state-list {
@@ -890,6 +961,10 @@ body {
   color: var(--muted);
   word-break: break-all;
 }
+/* Modo compacto: esconde o payload, mostra só o tipo do evento. */
+.log.compact .payload {
+  display: none;
+}
 
 .empty {
   color: var(--muted);
@@ -928,7 +1003,11 @@ body {
   text-align: center;
 }
 .approval-icon {
-  font-size: 40px;
+  color: var(--accent);
+}
+.approval-icon svg {
+  display: block;
+  margin: 0 auto;
 }
 .approval-card h3 {
   margin: 8px 0;
@@ -949,6 +1028,14 @@ body {
 .approval button.danger {
   background: var(--danger);
   color: #2b0907;
+}
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+.btn-icon svg {
+  display: block;
 }
 .approval-hint {
   color: var(--muted);
