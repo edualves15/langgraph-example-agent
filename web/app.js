@@ -56,6 +56,7 @@ const FT_SCHEMAS = FRONTEND_TOOLS.map(({ name, description, parameters }) => ({
   parameters,
 }));
 const executedToolCalls = new Set(); // toolCallId já executados no navegador
+let latestMessages = [];             // mensagens reconstruídas (via onMessagesChanged)
 
 // Cria um bloco INLINE no chat onde uma frontend tool renderiza seu componente
 // interativo. Devolve o container (nó DOM) passado ao handler.
@@ -80,7 +81,7 @@ function createToolUiBlock(toolName) {
 async function runWithFrontendTools(params) {
   await agent.runAgent({ ...params, tools: FT_SCHEMAS });
 
-  const messages = agent.messages || [];
+  const messages = latestMessages;
   const answered = new Set(
     messages.filter((m) => m.role === "tool").map((m) => m.toolCallId),
   );
@@ -470,10 +471,12 @@ const subscriber = {
     try { content = JSON.stringify(JSON.parse(content), null, 2); } catch { /* texto simples */ }
     t.resultEl.textContent = content;
   },
-  // Fonte autoritativa dos argumentos (oficial, agnóstica de provider): as
-  // mensagens reconstruídas pelo cliente. Preenche os args de cada tool card.
+  // Fonte autoritativa das mensagens reconstruídas (superfície documentada do
+  // AgentSubscriber). Guardamos para o loop de frontend tools e preenchemos os args
+  // de cada tool card (oficial, agnóstico de provider).
   onMessagesChanged: ({ messages }) => {
     if (!Array.isArray(messages)) return;
+    latestMessages = messages;
     for (const m of messages) {
       const calls = m.toolCalls || m.tool_calls;
       if (!calls) continue;

@@ -19,7 +19,8 @@ export const FRONTEND_TOOLS = [
       "Display a selectable list of cards in the chat and return the user's selection. " +
       "Use to present options that have a title/description/price (e.g. menu dishes) and " +
       "let the user choose. Pass the items in the `cards` argument, each as " +
-      "{id, title, description, price}. Returns the selected card ids.",
+      "{id, title, description, price}. Optionally pass `currency` (ISO 4217, e.g. " +
+      "\"BRL\", \"USD\") to format numeric prices. Returns the selected card ids.",
     parameters: {
       type: "object",
       properties: {
@@ -38,6 +39,10 @@ export const FRONTEND_TOOLS = [
             required: ["id", "title"],
           },
         },
+        currency: {
+          type: "string",
+          description: "Optional ISO 4217 currency code to format prices (e.g. BRL).",
+        },
         multiple: {
           type: "boolean",
           description: "Allow selecting more than one card (default true).",
@@ -45,11 +50,12 @@ export const FRONTEND_TOOLS = [
       },
       required: ["title", "cards"],
     },
-    handler: async ({ title, cards, items, multiple }, { container }) => {
+    handler: async ({ title, cards, items, currency, multiple }, { container }) => {
       // Tolerante a desvios do modelo no nome do argumento (cards/items).
       const ids = await cardList(container, {
         title: title || "",
         cards: cards || items || [],
+        currency,
         multiple: multiple !== false,
       });
       return JSON.stringify({ selected: ids });

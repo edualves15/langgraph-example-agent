@@ -141,7 +141,9 @@ Página estática servida pelo FastAPI, sem build step:
 - `ui-components.js` — toolkit de **widgets genéricos** (sem negócio): `optionList`
   (checkboxes/radios), `cardList` (cards selecionáveis), `confirmDialog` (Sim/Não). Cada um
   renderiza num `container` e devolve uma `Promise` que resolve na interação do usuário.
-  Anti-XSS (escapa todo texto).
+  Anti-XSS (escapa todo texto). **Sem moeda hardcoded**: `cardList`/`present_cards` aceitam
+  um `currency` (ISO 4217) opcional em runtime para formatar preços; sem ele, o preço é
+  renderizado cru (número ou string passthrough).
 - `frontend-tools.js` — **tools de UI genéricas** anunciadas ao agente: `present_cards`,
   `present_options`, `confirm_dialog` (`{ name, description, parameters, handler }`). O
   `handler(args, { container })` compõe um widget de `ui-components.js`, **aguarda** a
@@ -155,8 +157,9 @@ Página estática servida pelo FastAPI, sem build step:
   `onToolCallStartEvent`, `onStateSnapshotEvent`, `onCustomEvent`, …) e o catch-all
   `onEvent` loga cada evento no painel e no `console`.
   - **Tools de frontend:** `runWithFrontendTools(params)` envolve `agent.runAgent`,
-    **anunciando** `FT_SCHEMAS` (`tools`) em todo run; ao terminar o run, varre
-    `agent.messages` por chamadas a tools do registry ainda sem `ToolMessage`, cria um
+    **anunciando** `FT_SCHEMAS` (`tools`) em todo run; ao terminar o run, varre as
+    mensagens reconstruídas (`latestMessages`, capturadas em `onMessagesChanged` — superfície
+    documentada do subscriber) por chamadas a tools do registry ainda sem `ToolMessage`, cria um
     **bloco inline no chat** (`createToolUiBlock`), executa o `handler(args,{container})`
     (que **aguarda** a interação do usuário no componente), devolve o resultado via
     `agent.addMessage({role:"tool",...})` e **roda de novo** até o agente parar de

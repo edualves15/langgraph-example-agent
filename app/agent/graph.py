@@ -55,7 +55,7 @@ def build_graph() -> CompiledStateGraph:
       próximo run (ver `web/app.js` / `web/frontend-tools.js`).
 
     `state_schema=AgentState` declara `tools` (legível pelo nó). `checkpointer` persiste
-    threads (requisito para human-in-the-loop, ex.: `send_email`).
+    threads (requisito para human-in-the-loop, ex.: `create_reservation`).
     """
     model = get_llm()
     backend_tools = get_local_tools()

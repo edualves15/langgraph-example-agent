@@ -11,9 +11,21 @@ function escapeHtml(s) {
   ));
 }
 
-function formatPrice(v) {
+// Formatação de preço AGNÓSTICA de moeda: string já formatada pelo domínio passa
+// direto; número só vira moeda se um `currency` (ISO 4217) for fornecido em runtime —
+// caso contrário é renderizado cru. Nenhuma moeda fica hardcoded no widget.
+function formatPrice(v, currency) {
+  if (v == null || v === "") return "";
+  if (typeof v === "string") return v;
   if (typeof v !== "number") return "";
-  return "R$ " + v.toFixed(2).replace(".", ",");
+  if (currency) {
+    try {
+      return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(v);
+    } catch {
+      /* código de moeda inválido → cai para número cru */
+    }
+  }
+  return String(v);
 }
 
 // Marca o widget como concluído: desabilita interação e congela a escolha.
@@ -63,7 +75,7 @@ export function optionList(container, { title, options, multiple = true }) {
  * Lista de cards selecionáveis ({ id, title, description, price }) + confirmar.
  * Resolve com um array dos `id`s selecionados.
  */
-export function cardList(container, { title, cards, multiple = true }) {
+export function cardList(container, { title, cards, multiple = true, currency }) {
   return new Promise((resolve) => {
     const root = document.createElement("div");
     root.className = "uic uic-cards";
@@ -76,7 +88,7 @@ export function cardList(container, { title, cards, multiple = true }) {
             `<button type="button" class="uic-card" data-id="${escapeHtml(c.id)}">` +
             `<span class="uic-card-title">${escapeHtml(c.title ?? c.name ?? c.id)}</span>` +
             (c.description ? `<span class="uic-card-desc">${escapeHtml(c.description)}</span>` : "") +
-            (c.price != null ? `<span class="uic-card-price">${escapeHtml(formatPrice(c.price))}</span>` : "") +
+            (c.price != null ? `<span class="uic-card-price">${escapeHtml(formatPrice(c.price, currency))}</span>` : "") +
             `</button>`,
         )
         .join("") +
