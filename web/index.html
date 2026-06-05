@@ -9,26 +9,26 @@
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="logo"></span>
+      <span class="logo icon"></span>
       <div>
         <h1>AG-UI × LangGraph</h1>
         <p>Implementação oficial do protocolo Agent-User Interaction</p>
       </div>
     </div>
     <div class="meta">
-      <span id="status" class="status idle">idle</span>
-      <code id="thread" class="thread"></code>
+      <span id="status" class="status idle mono">idle</span>
+      <code id="thread" class="thread mono"></code>
     </div>
   </header>
 
   <main class="layout">
     <!-- Coluna do chat -->
     <section class="panel chat-panel is-empty">
-      <div class="panel-head"><span class="panel-head-icon"></span>Chat</div>
+      <div class="panel-head"><span class="panel-head-icon icon"></span>Chat</div>
       <div id="chat" class="chat">
         <div class="chat-start" id="chat-start">
           <div class="empty-prompt">
-            <p class="empty-prompt-icon"></p>
+            <p class="empty-prompt-icon icon"></p>
             <h2>O que você quer fazer hoje?</h2>
             <p class="empty-prompt-sub">Faça uma pergunta para começar.</p>
           </div>
@@ -38,7 +38,7 @@
             <div class="composer-wrap">
               <textarea id="input" rows="1" autocomplete="off"
                    placeholder="Pergunte algo…"></textarea>
-              <button id="send" type="submit" title="Enviar"></button>
+              <button id="send" type="submit" title="Enviar" class="icon"></button>
             </div>
           </form>
         </div>
@@ -49,9 +49,9 @@
     <aside class="side">
       <section class="panel">
         <div class="tabs" role="tablist">
-          <button class="tab active" data-tab="state" role="tab"><span class="tab-icon state-icon"></span>Estado</button>
-          <button class="tab" data-tab="tools" role="tab"><span class="tab-icon tools-icon"></span>Tool calls <span class="badge" id="badge-tools" hidden>0</span></button>
-          <button class="tab" data-tab="events" role="tab"><span class="tab-icon events-icon"></span>Eventos <span class="badge" id="badge-events" hidden>0</span></button>
+          <button class="tab active" data-tab="state" role="tab"><span class="tab-icon state-icon icon"></span>Estado</button>
+          <button class="tab" data-tab="tools" role="tab"><span class="tab-icon tools-icon icon"></span>Tool calls <span class="badge" id="badge-tools" hidden>0</span></button>
+          <button class="tab" data-tab="events" role="tab"><span class="tab-icon events-icon icon"></span>Eventos <span class="badge" id="badge-events" hidden>0</span></button>
         </div>
 
         <div class="tab-panels">
@@ -68,15 +68,15 @@
 
           <!-- Log de eventos AG-UI -->
           <div class="tab-content" data-tab="events">
-            <div id="log" class="log"></div>
-            <div class="events-bar">
+            <div id="log" class="log mono"></div>
+            <div class="events-bar panel-foot">
               <small>verifique também o Console / Network</small>
               <div class="events-actions">
                 <label class="toggle-detail" title="Exibir payload dos eventos">
                   <input type="checkbox" id="toggle-detail" checked />
                   <span>detalhes</span>
                 </label>
-                <button id="copy-log" class="ghost icon-only" title="Copiar eventos"></button>
+                <button id="copy-log" class="ghost icon-only icon" title="Copiar eventos"></button>
                 <button id="clear-log" class="ghost" title="Limpar log">limpar</button>
               </div>
             </div>
@@ -89,12 +89,12 @@
   <!-- Modal de aprovação (human-in-the-loop) -->
   <div id="approval" class="approval hidden">
     <div class="approval-card">
-      <div class="approval-icon"></div>
+      <div class="approval-icon icon"></div>
       <h3>Aprovação necessária</h3>
       <p id="approval-text"></p>
       <div class="approval-actions">
-        <button id="approve" class="primary"><span class="btn-icon approve-icon"></span>Aprovar</button>
-        <button id="reject" class="danger"><span class="btn-icon reject-icon"></span>Rejeitar</button>
+        <button id="approve" class="primary"><span class="btn-icon approve-icon icon"></span>Aprovar</button>
+        <button id="reject" class="danger"><span class="btn-icon reject-icon icon"></span>Rejeitar</button>
       </div>
       <p class="approval-hint">Retomada via <code>forwardedProps.command.resume</code></p>
     </div>

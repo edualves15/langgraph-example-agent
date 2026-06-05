@@ -46,7 +46,7 @@ const toolCards = new Map();        // toolCallId -> { card, argsEl, resultEl, b
 // ---------------------------------------------------------------------------
 function setStatus(s) {
   statusEl.textContent = s;
-  statusEl.className = "status " + s;
+  statusEl.className = "status mono " + s;
 }
 
 function addUserBubble(text) {
@@ -208,7 +208,7 @@ function renderState(state) {
     const li = document.createElement("li");
     li.className = "state-entry";
     const keyEl = document.createElement("div");
-    keyEl.className = "state-key";
+    keyEl.className = "state-key mono";
     keyEl.textContent = k;
     const valEl = document.createElement("div");
     valEl.className = "state-val";
@@ -366,15 +366,15 @@ const subscriber = {
     const card = document.createElement("div");
     card.className = "tool-card collapsed";
     card.innerHTML =
-      `<div class="t-head" role="button" tabindex="0">` +
+      `<div class="t-head mono" role="button" tabindex="0">` +
         `<span class="tog">▶</span>` +
         `<span class="dot"></span>` +
         `<span class="tname">${escapeHtml(event.toolCallName)}</span>` +
         `<span class="tid">${escapeHtml(event.toolCallId.slice(0, 8))}</span>` +
       `</div>` +
       `<div class="t-body">` +
-        `<div class="field args-field" hidden><span class="lbl">argumentos</span><pre class="args"></pre></div>` +
-        `<div class="field result-field" hidden><span class="lbl">resultado</span><pre class="result"></pre></div>` +
+        `<div class="field args-field" hidden><span class="lbl">argumentos</span><pre class="args pre-block"></pre></div>` +
+        `<div class="field result-field" hidden><span class="lbl">resultado</span><pre class="result pre-block"></pre></div>` +
       `</div>`;
     // Accordion toggle no header
     card.querySelector(".t-head").addEventListener("click", () => {
@@ -476,7 +476,7 @@ function showApproval(value) {
       approvalText.appendChild(p);
     }
     const pre = document.createElement("pre");
-    pre.className = "approval-json";
+    pre.className = "approval-json mono";
     pre.textContent = JSON.stringify(v, null, 2);
     approvalText.appendChild(pre);
   } else {
