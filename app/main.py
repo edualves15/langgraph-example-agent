@@ -8,6 +8,7 @@ from ag_ui.encoder import EventEncoder
 from ag_ui_langgraph import LangGraphAgent
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -23,6 +24,19 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="LangGraph Private Agent — AG-UI", version="0.2.0")
+
+# CORS — permite que QUALQUER frontend AG-UI (outra origem) consuma este agente, que é a
+# proposta de desacoplamento do protocolo. Configurável por `AG_UI_CORS_ORIGINS`.
+# Nota de conformidade: a spec proíbe wildcard "*" com `allow_credentials=True`; por isso
+# credentials só são habilitadas quando as origens são explícitas (não "*").
+_cors_origins = settings.cors_origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials="*" not in _cors_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ---------------------------------------------------------------------------
 # Agente oficial AG-UI sobre LangGraph
