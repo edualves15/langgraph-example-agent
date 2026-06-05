@@ -224,28 +224,90 @@ body {
   overflow-y: auto;
 }
 
-/* Frontend tools (estado dono da UI, renderizado por web/frontend-tools.js) */
-.frontend-tools-panel {
-  flex: 0 0 auto;
-  margin-top: 12px;
-}
-.frontend-tools-mount {
+/* Componentes interativos de frontend (web/ui-components.js), renderizados inline
+   no chat por tools de frontend (present_cards / present_options / confirm_dialog). */
+.uic {
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  border-radius: var(--radius-md);
   padding: 12px 14px;
-  overflow-y: auto;
-  max-height: 220px;
-}
-.frontend-tools-mount .ft-title {
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: var(--fs-sm);
-  margin-bottom: 8px;
-}
-.frontend-tools-mount .ft-proverbs {
-  margin: 0;
-  padding-left: 1.4em;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 10px;
+}
+.uic-title {
+  font-weight: 600;
+  font-size: var(--fs-lg);
+}
+.uic.uic-done {
+  opacity: 0.85;
+}
+.uic-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.uic-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.uic-opt input:disabled,
+.uic-card:disabled,
+.uic-confirm:disabled,
+.uic-actions button:disabled {
+  cursor: default;
+}
+.uic-card-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.uic-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+.uic-card:hover { border-color: var(--accent); }
+.uic-card.sel {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.uic-card-title { font-weight: 600; }
+.uic-card-desc { color: var(--muted); font-size: var(--fs-sm); }
+.uic-card-price { color: var(--accent-2); font-family: var(--mono); font-size: var(--fs-sm); }
+.uic-msg { color: var(--text); }
+.uic-actions { display: flex; gap: 8px; }
+.uic-confirm,
+.uic-actions button {
+  align-self: flex-start;
+  padding: 7px 14px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #06101f;
+  font-weight: 600;
+  cursor: pointer;
+}
+.uic-actions .uic-no {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border);
+}
+.uic-actions button.chosen { outline: 2px solid var(--accent); }
+.avatar-tool { color: var(--muted); }
+
+.status.waiting {
+  color: var(--accent-2);
+  border-color: var(--accent-2);
 }
 
 /* Chat */

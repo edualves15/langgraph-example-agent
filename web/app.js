@@ -5,11 +5,13 @@
 import { HttpAgent } from "https://esm.sh/@ag-ui/client@0.0.55";
 import { renderMarkdown } from "./markdown.js";
 import { SVG } from "./icons.js";
-import { FRONTEND_TOOLS, mountFrontendTools } from "./frontend-tools.js";
+import { FRONTEND_TOOLS } from "./frontend-tools.js";
 
 // Constantes — fonte única para valores que aparecem em múltiplos contextos.
 const ACCENT_COLOR = "#6ea8fe";        // sincronizar com --accent em styles.css
-const STATUS_LABELS = { idle: "idle", running: "running", done: "done", error: "error" };
+const STATUS_LABELS = {
+  idle: "idle", running: "running", waiting: "aguardando você", done: "done", error: "error",
+};
 
 // Cliente AG-UI 100% GENÉRICO: renderiza apenas com o que o protocolo fornece em
 // runtime (eventos SSE). Não conhece nomes de ferramentas, regras de negócio nem o
@@ -54,11 +56,27 @@ const FT_SCHEMAS = FRONTEND_TOOLS.map(({ name, description, parameters }) => ({
   parameters,
 }));
 const executedToolCalls = new Set(); // toolCallId já executados no navegador
-mountFrontendTools($("frontend-tools-mount"));
+
+// Cria um bloco INLINE no chat onde uma frontend tool renderiza seu componente
+// interativo. Devolve o container (nó DOM) passado ao handler.
+function createToolUiBlock(toolName) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "msg-wrapper assistant tool-ui";
+  wrapper.innerHTML =
+    `<div class="msg-header">` +
+      `<span class="avatar avatar-tool" aria-hidden="true">${SVG.tools || ""}</span>` +
+      `<div class="who mono">${escapeHtml(toolName)}</div>` +
+    `</div>` +
+    `<div class="tool-ui-body"></div>`;
+  chatEl.appendChild(wrapper);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return wrapper.querySelector(".tool-ui-body");
+}
 
 // Roda o agente anunciando as frontend tools e, sempre que ele chamar uma delas,
-// executa o handler no navegador, devolve o resultado como ToolMessage e roda de
-// novo — até o agente parar de chamá-las (mesmo loop ReAct, fechado pelo cliente).
+// renderiza o componente inline no chat, aguarda a interação do usuário, devolve o
+// resultado como ToolMessage e roda de novo — até o agente parar de chamá-las (mesmo
+// loop ReAct, fechado pelo cliente).
 async function runWithFrontendTools(params) {
   await agent.runAgent({ ...params, tools: FT_SCHEMAS });
 
@@ -82,7 +100,9 @@ async function runWithFrontendTools(params) {
       }
       let content;
       try {
-        content = await FT_BY_NAME.get(name).handler(args || {});
+        setStatus("waiting");
+        const container = createToolUiBlock(name);
+        content = await FT_BY_NAME.get(name).handler(args || {}, { container });
       } catch (err) {
         content = "Erro ao executar a ferramenta no navegador: " + (err?.message || err);
       }

@@ -130,33 +130,37 @@ em runtime e executadas no navegador). Estrutura:
 
 Página estática servida pelo FastAPI, sem build step:
 
-- **Cliente genérico + fronteira de tools de frontend.** `app.js` é um cliente AG-UI
-  **genérico** — renderiza **apenas com o que o protocolo fornece em runtime** (eventos
-  SSE via `@ag-ui/client`) e **não conhece nomes de tools, shape de estado/interrupt nem
-  sugestões**. A **única** lógica de negócio do front vive isolada em
-  **`frontend-tools.js`** (as ações client-side, ver abaixo): `app.js` apenas itera esse
-  registry pluggável. **Não coloque literais do agente em `app.js`** (se
-  `FRONTEND_TOOLS = []`, `app.js` volta a ser 100% genérico). Consequências (por escolha):
-  rótulos de atividade = `stepName`/`toolCallName` crus; tool cards **sem** badge de
-  origem (o protocolo não expõe origem); **sem** sugestões.
-- `frontend-tools.js` — **registry de tools de frontend** (ações client-side deste app, o
-  único lugar com conhecimento de negócio no front). Exporta `FRONTEND_TOOLS`
-  (`{ name, description, parameters, handler }`) e `mountFrontendTools(el)`. Cada `handler`
-  roda no **navegador** e retorna a string que vira o `ToolMessage` devolvido ao agente.
-  Demo atual: `setProverbs`/`addProverb` (estado **dono da UI**, renderizado no slot
-  `#frontend-tools-mount`). Ver https://docs.ag-ui.com/concepts/tools.
-- `index.html` — painel de chat + lateral (abas estado/tool calls/eventos) + slot
-  `#frontend-tools-mount`. Sem literais do agente (slot de sugestões vazio; painel de
-  estado genérico).
+- **Cliente genérico + tools de UI genéricas.** `app.js` é um cliente AG-UI **genérico**
+  — renderiza **apenas com o que o protocolo fornece em runtime** (eventos SSE via
+  `@ag-ui/client`) e **não conhece nomes de tools, shape de estado/interrupt nem
+  sugestões**. As tools de frontend (`frontend-tools.js`) e os widgets (`ui-components.js`)
+  são **agnósticos de domínio**: `app.js` apenas itera o registry. **O domínio (hoje,
+  Restaurante) vive só no BACKEND** + no raciocínio do agente. Se `FRONTEND_TOOLS = []`,
+  `app.js` volta a ser 100% genérico. Consequências (por escolha): rótulos de atividade =
+  `stepName`/`toolCallName` crus; tool cards **sem** badge de origem; **sem** sugestões.
+- `ui-components.js` — toolkit de **widgets genéricos** (sem negócio): `optionList`
+  (checkboxes/radios), `cardList` (cards selecionáveis), `confirmDialog` (Sim/Não). Cada um
+  renderiza num `container` e devolve uma `Promise` que resolve na interação do usuário.
+  Anti-XSS (escapa todo texto).
+- `frontend-tools.js` — **tools de UI genéricas** anunciadas ao agente: `present_cards`,
+  `present_options`, `confirm_dialog` (`{ name, description, parameters, handler }`). O
+  `handler(args, { container })` compõe um widget de `ui-components.js`, **aguarda** a
+  interação e retorna a string que vira o `ToolMessage`. Renderizadas **inline no chat**.
+  Ver https://docs.ag-ui.com/concepts/tools.
+- `index.html` — painel de chat + lateral (abas estado/tool calls/eventos). Sem literais do
+  agente (slot de sugestões vazio; painel de estado genérico). Os componentes interativos
+  são montados inline no chat (não há painel lateral de frontend tools).
 - `app.js` — `new HttpAgent({ url: "/agent" })` + `agent.subscribe(subscriber)`.
   O subscriber implementa um handler por categoria (`onTextMessageContentEvent`,
   `onToolCallStartEvent`, `onStateSnapshotEvent`, `onCustomEvent`, …) e o catch-all
   `onEvent` loga cada evento no painel e no `console`.
   - **Tools de frontend:** `runWithFrontendTools(params)` envolve `agent.runAgent`,
     **anunciando** `FT_SCHEMAS` (`tools`) em todo run; ao terminar o run, varre
-    `agent.messages` por chamadas a tools do registry ainda sem `ToolMessage`, executa o
-    `handler` no navegador, devolve o resultado via `agent.addMessage({role:"tool",...})`
-    e **roda de novo** até o agente parar de chamá-las (fecha o loop ReAct no cliente).
+    `agent.messages` por chamadas a tools do registry ainda sem `ToolMessage`, cria um
+    **bloco inline no chat** (`createToolUiBlock`), executa o `handler(args,{container})`
+    (que **aguarda** a interação do usuário no componente), devolve o resultado via
+    `agent.addMessage({role:"tool",...})` e **roda de novo** até o agente parar de
+    chamá-las (fecha o loop ReAct no cliente). Status fica `waiting` enquanto aguarda.
   - **Estado genérico:** `renderState(snapshot)` mostra todas as chaves do `STATE_SNAPSHOT`
     **exceto** as protocolares `messages`/`tools` (`PROTOCOL_STATE_KEYS`) — chave→valor,
     sem conhecer o agente.
@@ -190,19 +194,23 @@ Página estática servida pelo FastAPI, sem build step:
 2. Registre em `app/registries/tool_registry.py` → `get_local_tools()`.
 
 Não há metadados de narração — o streaming (`TOOL_CALL_*`) é automático. Essas são
-tools de **backend** (efeito server-side, executadas no nó `tools`).
+tools de **backend** (efeito/dado server-side, executadas no nó `tools`).
 
-- Estado compartilhado (agente-owned): uma tool muta o estado retornando
+- **Domínio (Restaurante):** `app/tools/restaurant_tools.py` — `get_menu`,
+  `get_available_times` (dados server-side) e `create_reservation`. **Trocar de domínio =
+  trocar este bloco** (e o `RESTAURANT_TOOLS` no registry); calendário e math permanecem.
+- Human-in-the-loop: chame `interrupt(value)` (`langgraph.types`) dentro da própria
+  tool de ação (ver `create_reservation`); a retomada vem por `Command(resume=...)` e o
+  front mostra o modal `on_interrupt`.
+- Estado compartilhado (agente-owned), se precisar: uma tool muta o estado retornando
   `Command(update={"<chave>": ..., "messages": [ToolMessage(...)]})` com
   `InjectedState` / `InjectedToolCallId` (emite `STATE_SNAPSHOT`/`STATE_DELTA`). Sem
-  exemplo no código hoje — a demo de estado migrou para uma tool de frontend.
-- Human-in-the-loop: chame `interrupt(value)` (`langgraph.types`) dentro da própria
-  tool de ação (ver `send_email` em `app/tools/email_tools.py`); a retomada vem por
-  `Command(resume=...)`.
+  exemplo no código hoje.
 - **Tool de frontend** (executada no **navegador**, não no back): NÃO crie `@tool` no
-  back. Adicione uma entrada em `web/frontend-tools.js` (`{name, description, parameters,
-  handler}`); o `app.js` a anuncia em runtime e o grafo a roteia de volta ao cliente
-  (ver **LangGraph graph**). Use quando a ação manipula UI/estado dono do front.
+  back. As tools de UI genéricas já existem em `web/frontend-tools.js` (`present_cards`/
+  `present_options`/`confirm_dialog`); o agente as usa passando os dados do domínio. Para
+  um novo widget, adicione-o a `web/ui-components.js` e exponha uma tool em
+  `frontend-tools.js`. O `app.js` anuncia em runtime e o grafo roteia de volta ao cliente.
 
 `web_search` / `web_extract` (Tavily) são carregadas apenas quando `TAVILY_API_KEY` está setada.
 

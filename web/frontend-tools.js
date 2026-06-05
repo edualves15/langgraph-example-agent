@@ -1,83 +1,108 @@
-// Ações client-side (frontend tools) específicas DESTE app.
+// Tools de frontend GENÉRICAS de UI (ações client-side anunciadas ao agente em runtime).
 //
-// Este é o ÚNICO lugar com conhecimento de negócio do front. O cliente genérico
-// (`app.js`) não conhece nomes de tools — apenas itera `FRONTEND_TOOLS`, anuncia os
-// schemas ao agente em runtime (campo `tools` do RunAgentInput) e executa os
-// `handler`s no navegador quando o agente as chama. Se este arquivo exportar `[]`,
-// `app.js` volta a ser um cliente AG-UI 100% genérico.
+// São agnósticas de domínio: renderizam um componente interativo INLINE no chat,
+// aguardam a interação do usuário e devolvem o resultado como `ToolMessage` ao agente.
+// O significado de negócio (cardápio, reservas, etc.) vem do BACKEND e do raciocínio do
+// agente — aqui só existem primitivos de UI. Se `FRONTEND_TOOLS = []`, o cliente
+// (app.js) volta a ser um renderizador AG-UI 100% genérico.
 //
-// Contrato de cada tool (AG-UI): { name, description, parameters } anunciado ao agente
-// + um `handler(args)` que roda no navegador e RETORNA o conteúdo (string) que vira o
-// `ToolMessage` devolvido ao agente. Ver https://docs.ag-ui.com/concepts/tools
+// Contrato (AG-UI): cada tool tem { name, description, parameters } anunciado ao agente
+// + um `handler(args, { container })` que renderiza no `container` (nó inline no chat) e
+// RETORNA a string (conteúdo do ToolMessage). Ver https://docs.ag-ui.com/concepts/tools
 
-// Estado DONO DA UI (não do agente): vive e é renderizado só no front.
-let proverbs = [];
-let mountEl = null;
-
-/** Recebe de `app.js` um nó DOM neutro onde este módulo renderiza o que quiser. */
-export function mountFrontendTools(el) {
-  mountEl = el;
-  render();
-}
-
-function render() {
-  if (!mountEl) return;
-  if (proverbs.length === 0) {
-    mountEl.innerHTML = `<div class="tab-empty">Nenhum provérbio (estado dono da UI)</div>`;
-    return;
-  }
-  const items = proverbs
-    .map((p) => `<li>${escapeHtml(p)}</li>`)
-    .join("");
-  mountEl.innerHTML =
-    `<div class="ft-title mono">proverbs · array[${proverbs.length}]</div>` +
-    `<ol class="ft-proverbs">${items}</ol>`;
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-}
+import { cardList, optionList, confirmDialog } from "./ui-components.js";
 
 export const FRONTEND_TOOLS = [
   {
-    name: "setProverbs",
+    name: "present_cards",
     description:
-      "Replace the entire list of proverbs shown in the UI with the provided list " +
-      "(pass an empty list to clear). Use when the user asks to set, reset, replace, " +
-      "or clear the proverbs.",
+      "Display a selectable list of cards in the chat and return the user's selection. " +
+      "Use to present options that have a title/description/price (e.g. menu dishes) and " +
+      "let the user choose. Pass the items in the `cards` argument, each as " +
+      "{id, title, description, price}. Returns the selected card ids.",
     parameters: {
       type: "object",
       properties: {
-        proverbs: {
+        title: { type: "string", description: "Heading shown above the cards." },
+        cards: {
           type: "array",
-          items: { type: "string" },
-          description: "The new list of proverbs (may be empty).",
+          description: "The cards to show.",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              title: { type: "string" },
+              description: { type: "string" },
+              price: { type: "number" },
+            },
+            required: ["id", "title"],
+          },
+        },
+        multiple: {
+          type: "boolean",
+          description: "Allow selecting more than one card (default true).",
         },
       },
-      required: ["proverbs"],
+      required: ["title", "cards"],
     },
-    handler: ({ proverbs: next }) => {
-      proverbs = Array.isArray(next) ? next.map(String) : [];
-      render();
-      return `Lista de provérbios definida com ${proverbs.length} item(ns).`;
+    handler: async ({ title, cards, items, multiple }, { container }) => {
+      // Tolerante a desvios do modelo no nome do argumento (cards/items).
+      const ids = await cardList(container, {
+        title: title || "",
+        cards: cards || items || [],
+        multiple: multiple !== false,
+      });
+      return JSON.stringify({ selected: ids });
     },
   },
   {
-    name: "addProverb",
+    name: "present_options",
     description:
-      "Append a single proverb to the list shown in the UI. Use when the user asks to " +
-      "create, add, or invent a proverb.",
+      "Display a list of options in the chat (checkboxes when multiple, radios when " +
+      "single) and return what the user selected. Use for simple textual choices " +
+      "(e.g. available time slots). Returns the selected options.",
     parameters: {
       type: "object",
       properties: {
-        proverb: { type: "string", description: "A short, original saying to append." },
+        title: { type: "string", description: "Heading shown above the options." },
+        options: {
+          type: "array",
+          items: { type: "string" },
+          description: "The selectable options.",
+        },
+        multiple: {
+          type: "boolean",
+          description: "Allow selecting more than one option (default false).",
+        },
       },
-      required: ["proverb"],
+      required: ["title", "options"],
     },
-    handler: ({ proverb }) => {
-      proverbs.push(String(proverb));
-      render();
-      return `Provérbio adicionado. Agora há ${proverbs.length} provérbio(s).`;
+    handler: async ({ title, options, items, multiple }, { container }) => {
+      const selected = await optionList(container, {
+        title: title || "",
+        options: options || items || [],
+        multiple: multiple === true,
+      });
+      return JSON.stringify({ selected });
+    },
+  },
+  {
+    name: "confirm_dialog",
+    description:
+      "Show an inline Yes/No confirmation dialog in the chat and return the user's " +
+      "decision. Use to confirm a choice or action before proceeding. Returns whether " +
+      "the user confirmed.",
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Short dialog title." },
+        message: { type: "string", description: "What the user is confirming." },
+      },
+      required: ["message"],
+    },
+    handler: async ({ title, message }, { container }) => {
+      const confirmed = await confirmDialog(container, { title, message });
+      return confirmed ? "O usuário confirmou." : "O usuário recusou.";
     },
   },
 ];

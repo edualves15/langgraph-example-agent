@@ -11,8 +11,12 @@ from app.tools.calendar_tools import (
     list_dates_in_range,
     shift_date,
 )
-from app.tools.email_tools import send_email
 from app.tools.math_tools import calculate_math_expression
+from app.tools.restaurant_tools import (
+    create_reservation,
+    get_available_times,
+    get_menu,
+)
 
 CALENDAR_TOOLS = [
     get_today_info,
@@ -25,12 +29,15 @@ CALENDAR_TOOLS = [
     list_dates_in_range,
 ]
 
+# Tools do domínio atual (Restaurante). Trocar de domínio = trocar este bloco.
+RESTAURANT_TOOLS = [get_menu, get_available_times, create_reservation]
+
 
 def get_local_tools() -> list[BaseTool]:
     tools: list[BaseTool] = [
         *CALENDAR_TOOLS,
         calculate_math_expression,
-        send_email,
+        *RESTAURANT_TOOLS,
     ]
     if settings.tavily_api_key:
         from app.tools.web_search import web_search, web_extract
