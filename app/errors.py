@@ -1,14 +1,25 @@
 """Classificação de erros do servidor.
 
-Converte qualquer exceção em uma mensagem curta e segura — específica quando o
-tipo do erro é determinável, genérica (com uma pista) caso contrário. Nunca
-expõe traceback. É usada tanto para o log (uma linha, sem stack trace) quanto
-para a mensagem enviada ao cliente no evento AG-UI `RUN_ERROR`.
+`describe_error` converte qualquer exceção em uma mensagem curta e **segura para o
+cliente** — específica quando o tipo do erro é determinável (auth/cota/rede/5xx),
+genérica caso contrário (sem expor texto cru da exceção, para não vazar detalhes
+internos num endpoint sem auth). `error_hint` devolve uma pista (tipo + 1ª linha) para
+uso **apenas no log do servidor**. Nenhuma das duas expõe traceback.
 """
 
 from __future__ import annotations
 
 _MAX_HINT = 160
+
+
+def error_hint(exc: BaseException) -> str:
+    """Pista curta para LOG do servidor: `Tipo: 1ª linha` (sem traceback)."""
+    try:
+        message = str(exc).strip()
+        first_line = message.splitlines()[0][:_MAX_HINT] if message else ""
+        return f"{type(exc).__name__}: {first_line}" if first_line else type(exc).__name__
+    except Exception:
+        return "UnknownError"
 
 
 def _http_status(exc: BaseException) -> int | None:
@@ -26,10 +37,11 @@ def _http_status(exc: BaseException) -> int | None:
 
 
 def describe_error(exc: BaseException) -> str:
-    """Mensagem segura e acionável para um erro, sem traceback.
+    """Mensagem **segura para o cliente**, sem traceback nem texto cru da exceção.
 
     Específica quando o erro é reconhecível (auth, cota, rede, indisponibilidade);
-    genérica + pista (tipo da exceção e 1ª linha da mensagem) quando não for.
+    genérica caso contrário. A pista detalhada (tipo/1ª linha) NÃO vai ao cliente —
+    use `error_hint(exc)` para isso, só no log.
     """
     try:
         status = _http_status(exc)
@@ -53,13 +65,9 @@ def describe_error(exc: BaseException) -> str:
             return ("Não foi possível conectar ao provedor de IA. "
                     "Verifique a conexão de rede.")
 
-        # Genérico — inclui uma pista (tipo + 1ª linha da mensagem), sem traceback.
-        first_line = ""
-        message = str(exc).strip()
-        if message:
-            first_line = message.splitlines()[0][:_MAX_HINT]
-        hint = f"{type(exc).__name__}: {first_line}" if first_line else type(exc).__name__
-        return f"Erro inesperado ao processar a solicitação. Pista: {hint}"
+        # Genérico — SEM texto cru da exceção (evita info-disclosure ao cliente).
+        # O detalhe vai ao log via error_hint().
+        return "Erro inesperado ao processar a solicitação. Tente novamente."
     except Exception:
         # describe_error jamais deve falhar.
         return "Erro inesperado ao processar a solicitação."

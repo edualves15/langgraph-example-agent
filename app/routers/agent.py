@@ -16,7 +16,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from app.config import settings
-from app.errors import describe_error
+from app.errors import describe_error, error_hint
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +35,14 @@ async def agent_endpoint(input_data: RunAgentInput, request: Request) -> Streami
                     continue
                 yield encoder.encode(event)
         except Exception as exc:  # resiliência: nenhuma exceção escapa do stream
-            message = describe_error(exc)
-            logger.error("Falha durante a execução do agente: %s", message)
+            # Detalhe (tipo/1ª linha) só no log; cliente recebe mensagem genérica/segura.
+            logger.error("Falha durante a execução do agente: %s", error_hint(exc))
             yield encoder.encode(
-                RunErrorEvent(type=EventType.RUN_ERROR, message=message, code="agent_run_error")
+                RunErrorEvent(
+                    type=EventType.RUN_ERROR,
+                    message=describe_error(exc),
+                    code="agent_run_error",
+                )
             )
 
     return StreamingResponse(event_generator(), media_type=encoder.get_content_type())

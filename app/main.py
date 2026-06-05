@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.agent.graph import build_graph
 from app.config import settings
-from app.errors import describe_error
+from app.errors import describe_error, error_hint
 from app.middleware import configure_middlewares
 from app.routers import agent as agent_router
 from app.routers import health as health_router
@@ -66,9 +66,9 @@ async def validation_handler(request: Request, exc: RequestValidationError) -> J
 
 @app.exception_handler(Exception)
 async def unhandled_handler(request: Request, exc: Exception) -> JSONResponse:
-    message = describe_error(exc)
-    logger.error("Erro não tratado em %s: %s", request.url.path, message)
-    return JSONResponse(status_code=500, content={"detail": message})
+    # Detalhe só no log; resposta ao cliente é genérica/segura.
+    logger.error("Erro não tratado em %s: %s", request.url.path, error_hint(exc))
+    return JSONResponse(status_code=500, content={"detail": describe_error(exc)})
 
 
 # ---------------------------------------------------------------------------

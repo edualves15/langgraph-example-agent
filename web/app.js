@@ -256,7 +256,7 @@ function logEvent(event) {
   const cls = LOG_CLASS[event.type] || "other";
   const { type, ...rest } = event;
   line.innerHTML =
-    `<span class="etype ${cls}">${type}</span> ` +
+    `<span class="etype ${cls}">${escapeHtml(String(type))}</span> ` +
     `<span class="payload">${escapeHtml(JSON.stringify(rest))}</span>`;
   logEl.appendChild(line);
   logEl.scrollTop = logEl.scrollHeight;

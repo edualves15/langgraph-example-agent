@@ -36,11 +36,11 @@ uvicorn app.main:app --port 8000
 # Run (dev, auto-reload on app/ changes)
 uvicorn app.main:app --reload --reload-dir app --port 8000
 
-# Tests
+# Tests (server-only: unit + integração; rodam offline, sem chamar o LLM)
 pytest tests/
 
 # Single test
-pytest tests/test_calculator.py::test_calculate_math_expression
+pytest tests/test_math_tools.py::test_basic_operators
 
 # Health check
 curl http://localhost:8000/health
@@ -286,17 +286,46 @@ adicionar/alterar uma tool, atualize a docstring** (não o `system.md`).
 
 `describe_error` nunca lança e converte exceções em mensagens curtas e seguras.
 
-- `app/errors.py::describe_error(exc)`: classifica a exceção em mensagem **específica**
+- `app/errors.py::describe_error(exc)`: mensagem **segura para o cliente** — específica
   (auth/401-403, cota/429, requisição/400, indisponibilidade/5xx, timeout, rede) ou
-  **genérica com pista** (`Tipo: 1ª linha`) quando indeterminável.
+  **genérica** quando indeterminável. **Não** expõe texto cru da exceção (evita
+  info-disclosure num endpoint sem auth). A pista detalhada (`Tipo: 1ª linha`) vem de
+  `error_hint(exc)` e é usada **só no log do servidor**.
 - Handlers globais em `app/main.py`: `RequestValidationError` → 422 JSON limpo;
-  `Exception` → 500 JSON com a mensagem de `describe_error`. Ambos logam uma linha.
-  Cobrem erros **pré-stream**/validação.
+  `Exception` → 500 JSON com `describe_error` (cliente) + `error_hint` (log). Cobrem erros
+  **pré-stream**/validação.
 - **Stream `/agent`** (wrap fino): o gerador envolve `agent.run()` em `try/except`; em erro
   loga **uma linha** (sem traceback) e emite um `RunErrorEvent`
   (`type=RUN_ERROR, code="agent_run_error"`) — evento **canônico** do protocolo — antes de
   fechar o stream. (A lib também emite `RUN_ERROR` para eventos `"error"` do LangGraph; o
   wrap cobre as exceções Python cruas que ela não trata.)
+
+## Segurança
+
+Mitigações implementadas e limitações **conhecidas/aceitas** (sem auth, por escolha — não
+expor publicamente sem adicionar auth + rate-limit).
+
+Implementado:
+- **XSS:** `markdown.js` e `ui-components.js` escapam todo conteúdo controlado pelo
+  agente e sanitizam URLs (só http/https/mailto; bloqueia `javascript:`/`data:`, inclusive
+  ofuscado). `app.js` insere dados via `escapeHtml`/`textContent`.
+- **DoS de potência:** `math_tools._guard_pow` recusa `**` cujo resultado teria magnitude
+  descomunal (ex.: `9**9**9`), sem afetar matemática normal.
+- **Info-disclosure:** erros ao cliente são genéricos (`describe_error`); detalhe só no log
+  (`error_hint`).
+- **Limite de corpo:** `MaxBodySizeMiddleware` (ASGI puro, não bufferiza o SSE) recusa POST
+  acima de `AG_UI_MAX_BODY_BYTES` (413).
+- Sem `eval/exec/subprocess/pickle`; `math` é AST-safe; `.env` no `.gitignore`.
+
+Limitações aceitas (precisam de auth/infra antes de produção):
+- **Sem auth + CORS `*`** → qualquer origem aciona o agente (custo/abuso). Restrinja via
+  `AG_UI_CORS_ORIGINS`; adicione auth/rate-limit para produção.
+- **`MemorySaver`** é in-memory e ilimitado (cresce por `threadId`) — só demo.
+- **`threadId` sem isolamento** (quem souber um, continua/lê a conversa).
+- **`web_search`/`web_extract`** trazem conteúdo não-confiável (prompt injection); blast
+  radius limitado (sem tools destrutivas; fetch do extract é da Tavily → sem SSRF local).
+- **Chamadas mistas backend+frontend** numa mesma mensagem do modelo são caso de borda
+  (assume-se 1 tool call por passo).
 
 ## Environment variables
 
@@ -309,3 +338,4 @@ Copy `.env.example` to `.env`. Required keys:
 | `TAVILY_API_KEY` | — | Enables the Tavily tools (`tavily_search` / `tavily_extract`) |
 | `AG_UI_STREAM_RAW_EVENTS` | `true` | When `false`, omits `RAW` events (LangChain callback passthrough) from the SSE stream |
 | `AG_UI_CORS_ORIGINS` | `*` | Origens permitidas via CORS (CSV). `*` libera todas; com origens explícitas, credenciais são habilitadas. |
+| `AG_UI_MAX_BODY_BYTES` | `2000000` | Tamanho máximo do corpo de uma requisição (bytes). `0` desabilita o limite. |

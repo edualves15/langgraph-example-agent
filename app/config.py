@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     # Origens permitidas via CORS (separadas por vírgula). "*" libera todas.
     ag_ui_cors_origins: str = "*"
 
+    # Tamanho máximo do corpo de uma requisição (bytes). Protege contra POSTs
+    # gigantes (DoS de memória). Default generoso; 0 desabilita o limite.
+    ag_ui_max_body_bytes: int = 2_000_000
+
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.ag_ui_cors_origins.split(",") if o.strip()]

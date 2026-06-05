@@ -21,6 +21,20 @@ ALLOWED_OPERATORS = {
 }
 
 
+# Teto de dígitos do resultado de uma potência inteira. Bloqueia "bombas" de
+# magnitude (ex.: `9**9**9`, `((2**1000)**1000)**1000`) que travariam CPU/memória,
+# sem afetar matemática normal (`2**10`, percentuais, `2**0.5`).
+_MAX_POW_RESULT_DIGITS = 10000
+
+
+def _guard_pow(base: Number, exponent: Number) -> None:
+    """Recusa potências inteiras cujo resultado teria magnitude descomunal."""
+    if isinstance(base, int) and isinstance(exponent, int) and exponent > 0:
+        # nº de dígitos do resultado ≈ dígitos(base) * expoente.
+        if (len(str(abs(base))) or 1) * exponent > _MAX_POW_RESULT_DIGITS:
+            raise ValueError("Power result is too large to compute.")
+
+
 def _safe_eval_math_node(node: ast.AST) -> Number:
     if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
         return node.value
@@ -31,6 +45,8 @@ def _safe_eval_math_node(node: ast.AST) -> Number:
             raise ValueError(f"Unsupported operator: {operator_type.__name__}")
         left = _safe_eval_math_node(node.left)
         right = _safe_eval_math_node(node.right)
+        if operator_type is ast.Pow:
+            _guard_pow(left, right)
         return ALLOWED_OPERATORS[operator_type](left, right)
 
     if isinstance(node, ast.UnaryOp):
