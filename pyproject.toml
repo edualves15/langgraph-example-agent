@@ -1,7 +1,7 @@
 [project]
 name = "langgraph-private-agent"
-version = "0.1.0"
-description = "Base enxuta para agente LangGraph com tools privadas e MCP opcional"
+version = "0.2.0"
+description = "Implementação oficial do protocolo AG-UI sobre LangGraph (FastAPI), com MCP opcional"
 requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.136.3",
@@ -14,7 +14,6 @@ dependencies = [
   "google-genai>=2.7.0",
   "httpx>=0.28.1",
   "langchain-google-genai>=4.2.4",
-  "langchain-openai>=1.2.2",
   "langchain-tavily>=0.2.18",
   "ag-ui-langgraph[fastapi]>=0.0.37"
 ]

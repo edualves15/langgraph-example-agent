@@ -83,17 +83,26 @@ GET  /agent/health →  {"status":"ok","agent":{"name":"private-agent"}}
 GET  /health      →  {"status":"ok"}
 ```
 
-`app/main.py`: `build_graph()` → `LangGraphAgent(name=..., graph=...)`. O `POST /agent` é
-definido manualmente, replicando `add_langgraph_fastapi_endpoint` com os **mesmos
-primitivos oficiais** (`agent.clone().run(input)` + `EventEncoder`), mas com um **wrap fino
-de erro**: em qualquer exceção, emite um `RunErrorEvent` (`code="agent_run_error"`) — o
-evento **canônico** do protocolo para falhas — em vez de derrubar o SSE cru (ver **Erros**).
-`GET /agent/health` (paridade) e `GET /health` são definidos à parte. O `StaticFiles` é
-montado em `/` **por último** para não capturar
-`/agent` e `/health`. **CORS:** `CORSMiddleware` (FastAPI) permite que qualquer frontend
-AG-UI de outra origem consuma o agente (desacoplamento). Origens via `AG_UI_CORS_ORIGINS`
-(default `*`); por conformidade com a spec, credenciais só ligam com origens explícitas
-(wildcard `*` é incompatível com `allow_credentials=True`).
+**Estrutura (FastAPI):** `app/main.py` cria o `FastAPI(lifespan=...)`, chama
+`configure_middlewares(app)` e inclui os routers. **Lifespan** (padrão oficial p/ recursos
+async): carrega as tools MCP (`get_mcp_tools()`, vazio por enquanto), faz
+`build_graph(extra_tools=mcp_tools)` e guarda o agente em **`app.state.agent`**.
+
+- `app/routers/agent.py` (`APIRouter`): `POST /agent` replica os **primitivos oficiais**
+  (`request.app.state.agent.clone().run(input)` + `EventEncoder`) com um **wrap fino de erro**
+  — em qualquer exceção emite `RunErrorEvent` (`code="agent_run_error"`), evento canônico do
+  protocolo, em vez de derrubar o SSE (ver **Erros**); e `GET /agent/health`.
+- `app/routers/health.py` (`APIRouter`): `GET /health`.
+- `app/middleware.py` (`configure_middlewares`): **CORS** (`CORSMiddleware`) — permite que
+  qualquer frontend AG-UI de outra origem consuma o agente. Origens via `AG_UI_CORS_ORIGINS`
+  (default `*`); conforme a spec, credenciais só ligam com origens explícitas (wildcard `*` é
+  incompatível com `allow_credentials=True`).
+- Os `@app.exception_handler` (validação/Exception) ficam em `main.py`. O `StaticFiles` é
+  montado em `/` **por último** para não capturar `/agent`/`/health`.
+- **MCP** (`app/services/mcp_service.py`): scaffold oficial via `MultiServerMCPClient`
+  (`langchain-mcp-adapters`). `MCP_SERVERS = {}` (vazio → nenhuma conexão); `get_mcp_tools()`
+  retorna `[]`. Para habilitar, adicione servidores em `MCP_SERVERS`; as tools entram no
+  grafo por `build_graph(extra_tools=...)`.
 
 ### LangGraph graph (`app/agent/graph.py`)
 

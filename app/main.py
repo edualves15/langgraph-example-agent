@@ -1,20 +1,20 @@
 import logging
-from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-from ag_ui.core import EventType, RunErrorEvent
-from ag_ui.core.types import RunAgentInput
-from ag_ui.encoder import EventEncoder
 from ag_ui_langgraph import LangGraphAgent
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.agent.graph import build_graph
 from app.config import settings
 from app.errors import describe_error
+from app.middleware import configure_middlewares
+from app.routers import agent as agent_router
+from app.routers import health as health_router
+from app.services.mcp_service import get_mcp_tools
 
 # Uvicorn configura apenas seus próprios loggers (uvicorn.*) e não toca no root.
 # Sem isso, logger.info() de código da aplicação é silenciado (root em WARNING).
@@ -23,69 +23,32 @@ logging.basicConfig(level=logging.INFO,
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="LangGraph Private Agent — AG-UI", version="0.2.0")
-
-# CORS — permite que QUALQUER frontend AG-UI (outra origem) consuma este agente, que é a
-# proposta de desacoplamento do protocolo. Configurável por `AG_UI_CORS_ORIGINS`.
-# Nota de conformidade: a spec proíbe wildcard "*" com `allow_credentials=True`; por isso
-# credentials só são habilitadas quando as origens são explícitas (não "*").
-_cors_origins = settings.cors_origins
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_credentials="*" not in _cors_origins,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # ---------------------------------------------------------------------------
-# Agente oficial AG-UI sobre LangGraph
+# Lifespan — inicialização assíncrona dos recursos (padrão oficial FastAPI).
+# As tools MCP (`get_mcp_tools`) exigem setup async; aqui são carregadas (vazio por
+# enquanto) e mescladas no grafo. O agente fica em `app.state.agent`.
 # ---------------------------------------------------------------------------
-# O endpoint abaixo replica `add_langgraph_fastapi_endpoint` com os **mesmos
-# primitivos oficiais** (`agent.clone().run` + `EventEncoder`), mas envolve o stream
-# num wrap fino de erro: em qualquer exceção, emite um `RUN_ERROR` — o evento
-# **canônico** do protocolo para sinalizar falha (`ag_ui.core.RunErrorEvent`) — em vez
-# de derrubar o SSE cru. É 100% protocolar; o helper puro apenas não oferece isso.
-graph = build_graph()
-agent = LangGraphAgent(name="private-agent", graph=graph)
-
-logger.info("Agente AG-UI inicializado.")
-
-# Eventos RAW são passthrough de callbacks internos do LangChain.
-# Úteis para debugging, mas representam ~75%+ dos eventos no SSE.
-# Quando desabilitados, apenas os eventos tipados do protocolo AG-UI são emitidos.
-logger.info("AG_UI_STREAM_RAW_EVENTS=%s", settings.ag_ui_stream_raw_events)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    mcp_tools = await get_mcp_tools()
+    graph = build_graph(extra_tools=mcp_tools)
+    app.state.agent = LangGraphAgent(name="private-agent", graph=graph)
+    logger.info("Agente AG-UI inicializado. MCP tools=%d", len(mcp_tools))
+    logger.info("AG_UI_STREAM_RAW_EVENTS=%s", settings.ag_ui_stream_raw_events)
+    yield
 
 
-@app.post("/agent")
-async def agent_endpoint(input_data: RunAgentInput, request: Request) -> StreamingResponse:
-    encoder = EventEncoder(accept=request.headers.get("accept"))
-    request_agent = agent.clone()  # estado isolado por requisição (oficial)
+app = FastAPI(title="LangGraph Private Agent — AG-UI", version="0.2.0", lifespan=lifespan)
 
-    async def event_generator() -> AsyncIterator[str]:
-        try:
-            async for event in request_agent.run(input_data):
-                if not settings.ag_ui_stream_raw_events and event.type == EventType.RAW:
-                    continue
-                yield encoder.encode(event)
-        except Exception as exc:  # resiliência: nenhuma exceção escapa do stream
-            message = describe_error(exc)
-            logger.error("Falha durante a execução do agente: %s", message)
-            yield encoder.encode(
-                RunErrorEvent(type=EventType.RUN_ERROR, message=message, code="agent_run_error")
-            )
+# Middleware (CORS) — isolado em app/middleware.py.
+configure_middlewares(app)
 
-    return StreamingResponse(event_generator(), media_type=encoder.get_content_type())
-
-
-@app.get("/agent/health")
-def agent_health() -> dict:
-    return {"status": "ok", "agent": {"name": agent.name}}
-
-
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+# Rotas — APIRouters dedicados.
+#   POST /agent (SSE + wrap de RUN_ERROR), GET /agent/health  →  app/routers/agent.py
+#   GET  /health                                              →  app/routers/health.py
+app.include_router(agent_router.router)
+app.include_router(health_router.router)
 
 
 # ---------------------------------------------------------------------------

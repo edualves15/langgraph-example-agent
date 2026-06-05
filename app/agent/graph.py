@@ -39,7 +39,7 @@ def _frontend_tool_schemas(tools: list[dict], exclude: set[str]) -> list[dict]:
     return schemas
 
 
-def build_graph() -> CompiledStateGraph:
+def build_graph(extra_tools: list | None = None) -> CompiledStateGraph:
     """Constrói o grafo (loop ReAct) compatível com a integração AG-UI.
 
     Diferente do prebuilt `create_react_agent` (cujo `ToolNode` executa **toda** tool
@@ -58,7 +58,8 @@ def build_graph() -> CompiledStateGraph:
     threads (requisito para human-in-the-loop, ex.: `create_reservation`).
     """
     model = get_llm()
-    backend_tools = get_local_tools()
+    # Tools locais + tools extras (ex.: MCP, carregadas no lifespan). Ver app/main.py.
+    backend_tools = [*get_local_tools(), *(extra_tools or [])]
     backend_names = {t.name for t in backend_tools}
 
     async def agent_node(state: AgentState) -> dict:
