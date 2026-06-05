@@ -12,5 +12,7 @@ class Settings(BaseSettings):
 
     tavily_api_key: str = ""
 
+    ag_ui_stream_raw_events: bool = True
+
 
 settings = Settings()

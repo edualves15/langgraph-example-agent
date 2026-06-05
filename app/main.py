@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.agent.graph import build_graph
+from app.config import settings
 from app.errors import describe_error
 
 # Uvicorn configura apenas seus próprios loggers (uvicorn.*) e não toca no root.
@@ -36,6 +37,11 @@ agent = LangGraphAgent(name="private-agent", graph=graph)
 
 logger.info("Agente AG-UI inicializado.")
 
+# Eventos RAW são passthrough de callbacks internos do LangChain.
+# Úteis para debugging, mas representam ~75%+ dos eventos no SSE.
+# Quando desabilitados, apenas os eventos tipados do protocolo AG-UI são emitidos.
+logger.info("AG_UI_STREAM_RAW_EVENTS=%s", settings.ag_ui_stream_raw_events)
+
 
 @app.post("/agent")
 async def agent_endpoint(input_data: RunAgentInput, request: Request) -> StreamingResponse:
@@ -45,6 +51,8 @@ async def agent_endpoint(input_data: RunAgentInput, request: Request) -> Streami
     async def event_generator() -> AsyncIterator[str]:
         try:
             async for event in request_agent.run(input_data):
+                if not settings.ag_ui_stream_raw_events and event.type == EventType.RAW:
+                    continue
                 yield encoder.encode(event)
         except Exception as exc:  # resiliência: nenhuma exceção escapa do stream
             message = describe_error(exc)

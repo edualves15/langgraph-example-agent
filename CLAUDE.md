@@ -232,3 +232,4 @@ Copy `.env.example` to `.env`. Required keys:
 | `GEMINI_API_KEY` | — | Required (Gemini provider) |
 | `GEMINI_MODEL` | `gemini-3.1-flash-lite` | Model name |
 | `TAVILY_API_KEY` | — | Enables the Tavily tools (`tavily_search` / `tavily_extract`) |
+| `AG_UI_STREAM_RAW_EVENTS` | `true` | When `false`, omits `RAW` events (LangChain callback passthrough) from the SSE stream |
