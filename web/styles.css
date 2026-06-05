@@ -14,7 +14,7 @@
   --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
 
   /* Cores sobre fundos de destaque */
-  --on-accent: #04122b;
+  --on-accent: #ffffff;
   --on-accent-2: #04210a;
   --on-danger: #2b0907;
   --custom-event: #d2a8ff;
@@ -101,6 +101,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin: 0 -14px -14px;   /* compensa padding do .tab-content */
   padding: 8px 14px;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
@@ -247,7 +248,7 @@ body {
   padding: 10px 0 0;
   width: 100%;
 }
-.chat-start .composer input {
+.chat-start .composer-wrap textarea {
   max-width: none;
 }
 .chat-start .suggestions {
@@ -629,13 +630,6 @@ body {
   cursor: not-allowed;
 }
 
-/* Ajustes no estado vazio */
-.chat-start .composer {
-  padding: 10px 0 0;
-}
-.chat-start .composer-wrap textarea {
-  max-width: none;
-}
 
 .approval button {
   border: none;
@@ -767,48 +761,72 @@ body {
   color-scheme: dark;
 }
 
+/* State cards — mesmo padrão visual de .tool-card */
 .state-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
 }
-.state-list > li {
-  background: var(--panel-2);
+.state-card {
   border: 1px solid var(--border);
-  border-left: 3px solid var(--accent-2);
-  border-radius: 6px;
-  padding: 8px 10px;
-  font-size: 13px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--panel-2);
 }
-.state-list > li.empty {
-  border-left-color: var(--border);
-  color: var(--muted);
-  font-style: italic;
+.state-card .s-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
 }
-/* Entrada genérica chave → valor do estado compartilhado */
-.state-entry .state-key {
+.state-card .s-head:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+.state-card .s-key {
   font-family: var(--mono);
   font-size: 12px;
+  font-weight: 600;
   color: var(--accent-2);
-  margin-bottom: 4px;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.state-entry .state-val ul {
+.state-card .s-type {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+.state-card .s-body {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+}
+.state-card.collapsed .s-body {
+  display: none;
+}
+.state-card .s-list {
   list-style: disc;
   margin: 0;
   padding-left: 18px;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
-.state-entry .state-val pre {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 12px;
+.state-card .s-scalar {
+  font-size: 13px;
+  color: var(--text);
 }
-.state-entry .state-val .empty {
+/* Toggle chevron — reusa o mesmo do tool-card */
+.state-card .tog {
+  font-size: 9px;
   color: var(--muted);
-  font-style: italic;
+  flex: 0 0 auto;
+  width: 10px;
+  text-align: center;
 }
 
 .tools {

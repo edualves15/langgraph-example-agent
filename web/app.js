@@ -50,49 +50,18 @@ function setStatus(s) {
 }
 
 function addUserBubble(text) {
-  // FLIP via Web Animations API: desliza composer + suggestions do centro
-  // para a base. Usamos WAAPI porque CSS transition depende de reflow hacks
-  // que falham quando o browser otimiza estados intermediários no mesmo tick.
   const panel = chatEl.closest(".chat-panel");
   if (panel.classList.contains("is-empty")) {
     const chatStart = document.getElementById("chat-start");
     const composer = document.getElementById("composer");
     const suggestions = document.getElementById("suggestions");
 
-    // 1. Posições no centro
-    const compFirst = composer.getBoundingClientRect();
-    const suggFirst = suggestions.getBoundingClientRect();
-
-    // 2. Esconde prompt + move elementos para fora de .chat-start
-    chatStart.style.opacity = "0";
+    // Transição instantânea, sem animação — zero flick.
+    chatStart.style.display = "none";
     panel.appendChild(composer);
     panel.insertBefore(suggestions, composer);
-    chatStart.style.display = "none";  // remove do layout imediatamente
     panel.classList.remove("is-empty");
-
-    // 3. Posições na base
-    const compLast = composer.getBoundingClientRect();
-    const suggLast = suggestions.getBoundingClientRect();
-
-    // 4. Anima com WAAPI (do centro → base)
-    const ease = "cubic-bezier(0.4, 0, 0.2, 1)";
-    composer.animate(
-      [{ transform: `translate(${compFirst.left - compLast.left}px, ${compFirst.top - compLast.top}px)` },
-       { transform: "translate(0, 0)" }],
-      { duration: 400, easing: ease, fill: "forwards" }
-    );
-    suggestions.animate(
-      [{ transform: `translate(${suggFirst.left - suggLast.left}px, ${suggFirst.top - suggLast.top}px)` },
-       { transform: "translate(0, 0)" }],
-      { duration: 400, easing: ease, fill: "forwards" }
-    );
-
-    // Layout estável — insere balão do usuário imediatamente
-    chatEl.appendChild(buildUserWrapper(text));
-    chatEl.scrollTop = chatEl.scrollHeight;
-    return;
   }
-
   chatEl.appendChild(buildUserWrapper(text));
   chatEl.scrollTop = chatEl.scrollHeight;
 }
@@ -200,40 +169,59 @@ function renderState(state) {
     ? Object.keys(state).filter((k) => !PROTOCOL_STATE_KEYS.has(k))
     : [];
   if (keys.length === 0) {
-    stateEl.innerHTML = `<li class="empty">— vazio —</li>`;
+    stateEl.innerHTML = `<div class="empty">Nenhum estado compartilhado ainda.</div>`;
     return;
   }
+  bumpBadge("state");
   for (const k of keys) {
     const v = state[k];
-    const li = document.createElement("li");
-    li.className = "state-entry";
-    const keyEl = document.createElement("div");
-    keyEl.className = "state-key mono";
-    keyEl.textContent = k;
-    const valEl = document.createElement("div");
-    valEl.className = "state-val";
+    const card = document.createElement("div");
+    card.className = "state-card";
+
+    // Header com toggle (accordion)
+    card.innerHTML =
+      `<div class="s-head" role="button" tabindex="0">` +
+        `<span class="tog">▼</span>` +
+        `<span class="s-key mono">${escapeHtml(k)}</span>` +
+        `<span class="s-type">${Array.isArray(v) ? "array[" + v.length + "]" : v && typeof v === "object" ? "object" : typeof v}</span>` +
+      `</div>` +
+      `<div class="s-body"></div>`;
+
+    const body = card.querySelector(".s-body");
+
     if (Array.isArray(v)) {
       if (v.length === 0) {
-        valEl.innerHTML = `<span class="empty">[]</span>`;
+        body.innerHTML = `<span class="empty">[]</span>`;
       } else {
         const ul = document.createElement("ul");
+        ul.className = "s-list";
         for (const item of v) {
           const it = document.createElement("li");
           it.textContent = typeof item === "string" ? item : JSON.stringify(item);
           ul.appendChild(it);
         }
-        valEl.appendChild(ul);
+        body.appendChild(ul);
       }
     } else if (v && typeof v === "object") {
       const pre = document.createElement("pre");
+      pre.className = "pre-block";
       pre.textContent = JSON.stringify(v, null, 2);
-      valEl.appendChild(pre);
+      body.appendChild(pre);
     } else {
-      valEl.textContent = String(v);
+      const span = document.createElement("span");
+      span.className = "s-scalar";
+      span.textContent = String(v);
+      body.appendChild(span);
     }
-    li.appendChild(keyEl);
-    li.appendChild(valEl);
-    stateEl.appendChild(li);
+
+    // Accordion toggle
+    card.querySelector(".s-head").addEventListener("click", () => {
+      card.classList.toggle("collapsed");
+      const tog = card.querySelector(".tog");
+      if (tog) tog.textContent = card.classList.contains("collapsed") ? "▶" : "▼";
+    });
+
+    stateEl.appendChild(card);
   }
 }
 
@@ -311,6 +299,7 @@ const subscriber = {
     const b = runBubble || getAssistantBubble("error-" + Date.now());
     b.el.classList.remove("streaming");
     b.body.innerHTML = SVG.warning + " " + escapeHtml(event.message || "Erro na execução.");
+    sendBtn.disabled = !inputEl.value.trim();
     runBubble = null;
     assistantBubbles.clear();
   },
@@ -450,7 +439,7 @@ agent.subscribe(subscriber);
 function finalizeRun(status) {
   setStatus(status);
   for (const [, b] of assistantBubbles) b.el.classList.remove("streaming");
-  sendBtn.disabled = false;
+  sendBtn.disabled = !inputEl.value.trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -520,6 +509,7 @@ async function send(text) {
 
 // Auto-resize do textarea (expande até 3 linhas, scroll depois)
 inputEl.addEventListener("input", () => {
+  sendBtn.disabled = !inputEl.value.trim();
   inputEl.style.height = "auto";
   const h = inputEl.scrollHeight;
   const max = 90; // ~3 linhas
@@ -635,7 +625,7 @@ $("clear-log").addEventListener("click", (e) => {
 // Abas do painel de debug + contadores totais (tool calls / eventos)
 // ---------------------------------------------------------------------------
 const tabsEl = document.querySelector(".tabs");
-const counters = { tools: 0, events: 0 };
+const counters = { state: 0, tools: 0, events: 0 };
 
 function setActiveTab(name) {
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
