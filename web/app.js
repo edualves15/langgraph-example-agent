@@ -6,6 +6,10 @@ import { HttpAgent } from "https://esm.sh/@ag-ui/client@0.0.55";
 import { renderMarkdown } from "./markdown.js";
 import { SVG } from "./icons.js";
 
+// Constantes — fonte única para valores que aparecem em múltiplos contextos.
+const ACCENT_COLOR = "#6ea8fe";        // sincronizar com --accent em styles.css
+const STATUS_LABELS = { idle: "idle", running: "running", done: "done", error: "error" };
+
 // Cliente AG-UI 100% GENÉRICO: renderiza apenas com o que o protocolo fornece em
 // runtime (eventos SSE). Não conhece nomes de ferramentas, regras de negócio nem o
 // formato do estado/interrupt de um agente específico — funciona com qualquer backend
@@ -45,7 +49,7 @@ const toolCards = new Map();        // toolCallId -> { card, argsEl, resultEl, b
 // Helpers de UI
 // ---------------------------------------------------------------------------
 function setStatus(s) {
-  statusEl.textContent = s;
+  statusEl.textContent = STATUS_LABELS[s] || s;
   statusEl.className = "status mono " + s;
 }
 
@@ -149,7 +153,7 @@ function logEvent(event) {
   logEl.scrollTop = logEl.scrollHeight;
   bumpBadge("events");
   // Console do navegador — para verificação do SSE/protocolo.
-  console.log("%c[AG-UI] " + type, "color:#6ea8fe", event);
+  console.log("%c[AG-UI] " + type, "color:" + ACCENT_COLOR, event);
 }
 
 function escapeHtml(s) {
@@ -169,7 +173,7 @@ function renderState(state) {
     ? Object.keys(state).filter((k) => !PROTOCOL_STATE_KEYS.has(k))
     : [];
   if (keys.length === 0) {
-    stateEl.innerHTML = `<div class="empty">Nenhum estado compartilhado ainda.</div>`;
+    stateEl.innerHTML = `<div class="tab-empty">Nenhum estado compartilhado</div>`;
     return;
   }
   // Badge reflete o número real de chaves de estado (não acumula snapshots)
@@ -353,7 +357,7 @@ const subscriber = {
       const tog = card.querySelector(".tog");
       if (tog) tog.textContent = card.classList.contains("collapsed") ? "▶" : "▼";
     });
-    if (toolsEl.querySelector(".empty")) toolsEl.innerHTML = "";
+    if (toolsEl.querySelector(".tab-empty")) toolsEl.innerHTML = "";
     toolsEl.appendChild(card);
     bumpBadge("tools");
     toolCards.set(event.toolCallId, {
@@ -489,19 +493,11 @@ async function send(text) {
   }
 }
 
-// Auto-resize do textarea (expande até 3 linhas, scroll depois)
+// Auto-resize do textarea (max-height controlado pelo CSS — 6.5em no styles.css)
 inputEl.addEventListener("input", () => {
   sendBtn.disabled = !inputEl.value.trim();
   inputEl.style.height = "auto";
-  const h = inputEl.scrollHeight;
-  const max = 90; // ~3 linhas
-  if (h > max) {
-    inputEl.style.height = max + "px";
-    inputEl.style.overflowY = "auto";
-  } else {
-    inputEl.style.height = h + "px";
-    inputEl.style.overflowY = "hidden";
-  }
+  inputEl.style.height = inputEl.scrollHeight + "px";
 });
 
 // Enter = enviar, Shift+Enter = nova linha
@@ -531,37 +527,24 @@ $("suggestions").addEventListener("click", (e) => {
 const copyBtn = $("copy-log");
 const toggleDetailChk = $("toggle-detail");
 
-// Injeta SVGs em todos os placeholders de ícone da aplicação.
+// Injeta SVGs em todos os elementos com data-icon (fonte única via atributo HTML).
 function initIcons() {
-  // Top bar
-  document.querySelector(".logo").innerHTML = SVG.logo;
-  document.querySelector(".panel-head-icon").innerHTML = SVG.chat;
-
-  // Empty prompt
-  const emptyIcon = document.querySelector(".empty-prompt-icon");
-  if (emptyIcon) emptyIcon.innerHTML = SVG.chat.replace('width="18" height="18"', 'width="48" height="48"');
-
-  // Send button
-  const sendEl = document.getElementById("send");
-  if (sendEl) sendEl.innerHTML = SVG.send;
-
-  // Tabs do painel lateral
-  document.querySelector(".state-icon").innerHTML = SVG.state;
-  document.querySelector(".tools-icon").innerHTML = SVG.tools;
-  document.querySelector(".events-icon").innerHTML = SVG.events;
-
-  // Modal de aprovação
-  document.querySelector(".approval-icon").innerHTML = SVG.hand;
-  document.querySelector(".approve-icon").innerHTML = SVG.approve;
-  document.querySelector(".reject-icon").innerHTML = SVG.reject;
-
-  // Barra de eventos
-  if (copyBtn) copyBtn.innerHTML = SVG.copy;
+  document.querySelectorAll("[data-icon]").forEach((el) => {
+    const name = el.dataset.icon;
+    if (!SVG[name]) return;
+    let svg = SVG[name];
+    const size = el.dataset.iconSize;
+    if (size) {
+      svg = svg.replace(/width="[^"]+"/, `width="${size}"`)
+               .replace(/height="[^"]+"/, `height="${size}"`);
+    }
+    el.innerHTML = svg;
+  });
 }
 initIcons();
 
-// Estado do modo compacto (só tipos, sem payload).
-let logCompact = false;
+// Estado do modo compacto (só tipos, sem payload) — inicializa do checkbox no DOM.
+let logCompact = !toggleDetailChk.checked;
 
 // Copiar: extrai o texto de cada linha do log e copia para a área de transferência.
 copyBtn.addEventListener("click", async (e) => {
@@ -600,7 +583,8 @@ toggleDetailChk.addEventListener("change", () => {
 
 $("clear-log").addEventListener("click", (e) => {
   e.stopPropagation();
-  logEl.innerHTML = "";
+  logEl.innerHTML = `<div class="tab-empty">Nenhum evento ocorrido</div>`;
+  setBadge("events", 0);
 });
 
 // ---------------------------------------------------------------------------
@@ -621,7 +605,6 @@ function bumpBadge(name) {
   if (!badge) return;
   counters[name] += 1;
   badge.textContent = String(counters[name]);
-  badge.hidden = false;
 }
 // Define valor absoluto (ex.: número de chaves de estado).
 function setBadge(name, value) {
@@ -630,7 +613,6 @@ function setBadge(name, value) {
   if (!badge) return;
   counters[name] = value;
   badge.textContent = String(value);
-  badge.hidden = value === 0;
 }
 
 tabsEl.addEventListener("click", (e) => {

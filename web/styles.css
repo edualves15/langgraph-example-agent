@@ -13,6 +13,14 @@
   --assistant: #16202f;
   --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
 
+  /* Escala tipográfica */
+  --fs-xs: 10px;
+  --fs-sm: 11px;
+  --fs-md: 13px;
+  --fs-lg: 14px;
+  --fs-xl: 18px;
+  --fs-2xl: 20px;
+
   /* Cores sobre fundos de destaque */
   --on-accent: #ffffff;
   --on-accent-2: #04210a;
@@ -90,7 +98,7 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: var(--fs-sm);
   line-height: 1.55;
   color: var(--text);
   white-space: pre-wrap;
@@ -105,7 +113,7 @@ body {
   padding: 8px 14px;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: var(--fs-sm);
 }
 
 .topbar {
@@ -123,13 +131,13 @@ body {
 }
 .logo { color: var(--accent); }
 .brand h1 {
-  font-size: 18px;
+  font-size: var(--fs-xl);
   margin: 0;
 }
 .brand p {
   margin: 2px 0 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 .meta {
   display: flex;
@@ -139,12 +147,12 @@ body {
 .thread {
   color: var(--muted);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-sm);
 }
 
 .status {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid var(--border);
@@ -195,7 +203,7 @@ body {
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--fs-lg);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -205,7 +213,7 @@ body {
   color: var(--muted);
   font-weight: 400;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-sm);
 }
 .panel-head .ghost {
   margin-left: auto;
@@ -264,13 +272,13 @@ body {
 .empty-prompt-icon { color: var(--muted); }
 .empty-prompt-icon svg { margin: 0 auto 8px; }
 .empty-prompt h2 {
-  font-size: 20px;
+  font-size: var(--fs-2xl);
   font-weight: 700;
   margin: 0 0 6px;
   color: var(--text);
 }
 .empty-prompt-sub {
-  font-size: 13.5px;
+  font-size: var(--fs-md);
   color: var(--muted);
   margin: 0 0 16px;
   max-width: 380px;
@@ -360,7 +368,7 @@ body {
 
 /* Nome */
 .msg-header .who {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--muted);
   letter-spacing: 0.2px;
@@ -368,7 +376,7 @@ body {
 
 /* ── Balão ── */
 .msg-wrapper.user .bubble {
-  font-size: 14px;
+  font-size: var(--fs-lg);
   line-height: 1.7;
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -382,7 +390,7 @@ body {
 }
 /* Agente — markdown, sem fundo, largura total */
 .msg-wrapper.assistant .bubble {
-  font-size: 14px;
+  font-size: var(--fs-lg);
   line-height: 1.7;
   word-wrap: break-word;
   overflow-wrap: anywhere;
@@ -564,7 +572,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 6px 12px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   cursor: pointer;
 }
 .suggestions button:hover {
@@ -591,7 +599,7 @@ body {
   border-radius: 12px;
   padding: 10px 40px 10px 14px;
   color: var(--text);
-  font-size: 14px;
+  font-size: var(--fs-lg);
   line-height: 1.45;
   font-family: inherit;
   resize: none;
@@ -639,7 +647,7 @@ body {
   cursor: pointer;
   background: var(--accent);
   color: var(--on-accent);
-  font-size: 14px;
+  font-size: var(--fs-lg);
 }
 
 /* Side (painel de debug com abas) */
@@ -665,7 +673,7 @@ body {
   border: none;
   color: var(--muted);
   padding: 11px 8px;
-  font-size: 13px;
+  font-size: var(--fs-md);
   font-weight: 600;
   cursor: pointer;
   border-bottom: 2px solid transparent;
@@ -685,7 +693,7 @@ body {
 .tabs .badge {
   background: var(--accent);
   color: var(--on-accent);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   font-weight: 700;
   min-width: 16px;
   height: 16px;
@@ -713,13 +721,13 @@ body {
 }
 .tab-content h4 {
   margin: 0 0 10px;
-  font-size: 13px;
+  font-size: var(--fs-md);
 }
 .tab-content h4 small {
   color: var(--muted);
   font-weight: 400;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   margin-left: 6px;
 }
 
@@ -737,7 +745,7 @@ body {
   overflow-y: auto;
 }
 .events-bar { margin-top: 10px; }
-.events-bar small { color: var(--muted); font-size: 10px; }
+.events-bar small { color: var(--muted); font-size: var(--fs-xs); }
 .events-actions {
   display: flex;
   align-items: center;
@@ -749,7 +757,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: var(--fs-sm);
   color: var(--muted);
   cursor: pointer;
   user-select: none;
@@ -786,7 +794,7 @@ body {
 }
 .state-card .s-key {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--accent-2);
   flex: 1 1 auto;
@@ -796,7 +804,7 @@ body {
 }
 .state-card .s-type {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   color: var(--muted);
   flex: 0 0 auto;
 }
@@ -809,7 +817,7 @@ body {
 }
 /* Toggle chevron — reusa o mesmo do tool-card */
 .state-card .tog {
-  font-size: 9px;
+  font-size: var(--fs-xs);
   color: var(--muted);
   flex: 0 0 auto;
   width: 10px;
@@ -834,7 +842,7 @@ body {
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
   font-family: var(--mono);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   color: var(--tool);
 }
 .tool-card .t-head .dot {
@@ -855,7 +863,7 @@ body {
 }
 .tool-card .t-head .tid {
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: var(--fs-xs);
   flex: 0 0 auto;
 }
 .tool-card.done .t-head {
@@ -881,7 +889,7 @@ body {
 }
 .tool-card .lbl {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   text-transform: uppercase;
   letter-spacing: 0.6px;
   color: var(--muted);
@@ -903,7 +911,7 @@ body {
 
 /* Toggle chevron */
 .tool-card .tog {
-  font-size: 9px;
+  font-size: var(--fs-xs);
   color: var(--muted);
   flex: 0 0 auto;
   width: 10px;
@@ -912,7 +920,7 @@ body {
 
 .log {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -951,9 +959,9 @@ body {
   display: none;
 }
 
-.empty {
+.tab-empty {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--fs-md);
   font-style: italic;
 }
 .ghost {
@@ -962,7 +970,7 @@ body {
   color: var(--muted);
   border-radius: 6px;
   padding: 2px 8px;
-  font-size: 11px;
+  font-size: var(--fs-sm);
   cursor: pointer;
 }
 
@@ -1012,7 +1020,7 @@ body {
 .btn-icon { vertical-align: middle; }
 .approval-hint {
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   margin-top: 16px;
 }
 .approval-hint code {
@@ -1030,7 +1038,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px 14px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-family: var(--mono);
   white-space: pre-wrap;
   word-break: break-word;
