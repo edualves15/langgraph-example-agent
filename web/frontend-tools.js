@@ -17,10 +17,10 @@ export const FRONTEND_TOOLS = [
     name: "present_cards",
     description:
       "Display a selectable list of cards in the chat and return the user's selection. " +
-      "Use to present options that have a title/description/price (e.g. menu dishes) and " +
-      "let the user choose. Pass the items in the `cards` argument, each as " +
-      "{id, title, description, price}. Optionally pass `currency` (ISO 4217, e.g. " +
-      "\"BRL\", \"USD\") to format numeric prices. Returns the selected card ids.",
+      "PREFER THIS over asking in plain text whenever the user must choose among items that " +
+      "have a title/description/price (e.g. menu dishes). Pass the items in the `cards` " +
+      "argument, each as {id, title, description, price}. Optionally pass `currency` " +
+      "(ISO 4217, e.g. \"BRL\", \"USD\") to format numeric prices. Returns the selected card ids.",
     parameters: {
       type: "object",
       properties: {
@@ -65,8 +65,9 @@ export const FRONTEND_TOOLS = [
     name: "present_options",
     description:
       "Display a list of options in the chat (checkboxes when multiple, radios when " +
-      "single) and return what the user selected. Use for simple textual choices " +
-      "(e.g. available time slots). Returns the selected options.",
+      "single) and return what the user selected. PREFER THIS over a free-text question " +
+      "whenever the choice is among a known set of simple options (e.g. available time " +
+      "slots, sizes). Returns the selected options.",
     parameters: {
       type: "object",
       properties: {
@@ -96,8 +97,8 @@ export const FRONTEND_TOOLS = [
     name: "confirm_dialog",
     description:
       "Show an inline Yes/No confirmation dialog in the chat and return the user's " +
-      "decision. Use to confirm a choice or action before proceeding. Returns whether " +
-      "the user confirmed.",
+      "decision. PREFER THIS over asking a yes/no question in plain text, to confirm a " +
+      "choice or action before proceeding. Returns whether the user confirmed.",
     parameters: {
       type: "object",
       properties: {

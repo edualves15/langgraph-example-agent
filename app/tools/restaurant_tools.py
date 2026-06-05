@@ -45,40 +45,57 @@ def get_menu() -> str:
 
 
 @tool
-def update_order(
-    item_ids: list[str],
+def update_reservation(
     state: Annotated[dict, InjectedState],
     tool_call_id: Annotated[str, InjectedToolCallId],
+    item_ids: list[str] | None = None,
+    date_iso: str | None = None,
+    time: str | None = None,
+    party_size: int | None = None,
+    customer_name: str | None = None,
 ) -> Command:
-    """Set the customer's current order (shared state shown live in the order panel).
+    """Update the customer's current reservation draft (shared state shown live on screen).
 
-    Call this EVERY time the selection changes — right after the customer picks, adds or
-    removes dishes (including selecting cards) — so the order panel stays in sync on screen.
-    Pass the FULL list of chosen dish ids (this replaces the current order; pass an empty
-    list to clear it).
+    Call this EVERY time the customer makes or changes a choice — picked dishes (incl.
+    selecting cards), date, time, party size or name — passing ONLY the fields that
+    changed. The draft is merged and shown live in the state panel, so it always reflects
+    everything chosen so far. For dishes, pass the FULL list of chosen ids (replaces the
+    dishes; empty list clears them).
 
-    Input:
-    - item_ids: the dish ids currently in the order.
+    Input (all optional; pass what changed):
+    - item_ids: dish ids currently chosen.
+    - date_iso: reservation date (YYYY-MM-DD).
+    - time: reservation time (HH:MM).
+    - party_size: number of people.
+    - customer_name: name for the reservation.
 
-    Returns a short confirmation; the updated order is emitted to the UI as shared state.
+    Returns a short confirmation; the merged draft is emitted to the UI as shared state.
     """
-    items = [
-        {"name": _MENU_BY_ID[i]["name"], "price": _MENU_BY_ID[i]["price"]}
-        for i in item_ids
-        if i in _MENU_BY_ID
+    update: dict = {}
+
+    if item_ids is not None:
+        items = [
+            {"name": _MENU_BY_ID[i]["name"], "price": _MENU_BY_ID[i]["price"]}
+            for i in item_ids
+            if i in _MENU_BY_ID
+        ]
+        update["order"] = items
+
+    reservation = dict(state.get("reservation") or {})
+    for key, value in (
+        ("date", date_iso),
+        ("time", time),
+        ("party_size", party_size),
+        ("customer_name", customer_name),
+    ):
+        if value is not None:
+            reservation[key] = value
+    update["reservation"] = reservation
+
+    update["messages"] = [
+        ToolMessage(content="Reserva atualizada.", tool_call_id=tool_call_id)
     ]
-    total = round(sum(it["price"] for it in items), 2)
-    return Command(
-        update={
-            "order": items,
-            "messages": [
-                ToolMessage(
-                    content=f"Pedido atualizado: {len(items)} item(ns), total {total}.",
-                    tool_call_id=tool_call_id,
-                )
-            ],
-        }
-    )
+    return Command(update=update)
 
 
 @tool

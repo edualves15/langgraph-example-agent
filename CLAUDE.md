@@ -100,9 +100,10 @@ async): carrega as tools MCP (`get_mcp_tools()`, vazio por enquanto), faz
 - Os `@app.exception_handler` (validação/Exception) ficam em `main.py`. O `StaticFiles` é
   montado em `/` **por último** para não capturar `/agent`/`/health`.
 - **MCP** (`app/services/mcp_service.py`): scaffold oficial via `MultiServerMCPClient`
-  (`langchain-mcp-adapters`). `MCP_SERVERS = {}` (vazio → nenhuma conexão); `get_mcp_tools()`
-  retorna `[]`. Para habilitar, adicione servidores em `MCP_SERVERS`; as tools entram no
-  grafo por `build_graph(extra_tools=...)`.
+  (`langchain-mcp-adapters`). Os servidores vêm de **`mcp.json`** na raiz (convenção
+  `mcpServers`), hoje **vazio** → `get_mcp_tools()` retorna `[]`. Para habilitar, adicione
+  servidores em `mcp.json` (sem mexer em código); as tools entram no grafo por
+  `build_graph(extra_tools=...)`.
 
 ### LangGraph graph (`app/agent/graph.py`)
 
@@ -217,11 +218,13 @@ Não há metadados de narração — o streaming (`TOOL_CALL_*`) é automático.
 tools de **backend** (efeito/dado server-side, executadas no nó `tools`).
 
 - **Domínio (Restaurante):** `app/tools/restaurant_tools.py` — `get_menu`,
-  `get_available_times` (dados server-side), `update_order` (estado compartilhado) e
+  `get_available_times` (dados server-side), `update_reservation` (estado compartilhado) e
   `create_reservation`. **Trocar de domínio = trocar este bloco** (e o `RESTAURANT_TOOLS`
   no registry); calendário e math permanecem. O `system.md` instrui o agente a chamar
-  `update_order` **logo após cada escolha** (inclusive nos cards), para o painel de estado
-  atualizar **ao vivo**.
+  `update_reservation` (campos parciais) **logo após cada escolha** — pratos, data, horário,
+  pessoas — para o painel refletir o **rascunho completo da reserva** ao vivo. O `system.md`
+  também pede para **preferir UI interativa** (tools de frontend) a perguntar em texto livre
+  (instrução **genérica**, sem nomear tools → o agente só usa o que veio no handshake).
 - Human-in-the-loop: chame `interrupt(value)` (`langgraph.types`) dentro da própria
   tool de ação (ver `create_reservation`); a retomada vem por `Command(resume=...)` e o
   front mostra o modal `on_interrupt`. O `value` do interrupt deve ser **legível** (rótulos
@@ -229,11 +232,12 @@ tools de **backend** (efeito/dado server-side, executadas no nó `tools`).
 - Estado compartilhado (agente-owned): uma tool muta o estado retornando
   `Command(update={"<chave>": ..., "messages": [ToolMessage(...)]})` com
   `InjectedState` / `InjectedToolCallId` (emite `STATE_SNAPSHOT`/`STATE_DELTA`; o front o
-  renderiza genericamente no painel de estado). Exemplo: `update_order` muta `order`
-  (campo declarado em `AgentState`), o pedido atual do cliente.
+  renderiza genericamente no painel de estado). Exemplo: `update_reservation` muta `order`
+  (pratos `{name, price}`) e `reservation` (`date`/`time`/`party_size`/`customer_name`) —
+  campos declarados em `AgentState` — o rascunho da reserva.
 - **Estado preditivo (`PredictState`):** o `agent_node` injeta `config.metadata.predict_state`
   (de `PREDICT_STATE` no registry, domínio-específico: liga `order` ← arg `item_ids` de
-  `update_order`). A lib emite o `CUSTOM PredictState`; o front (`app.js`, handler
+  `update_reservation`). A lib emite o `CUSTOM PredictState`; o front (`app.js`, handler
   **genérico** `applyPredict`) aplica os args em streaming à `state_key` de forma otimista e
   reconcilia no `STATE_SNAPSHOT`. **Depende do provedor fazer streaming dos `TOOL_CALL_ARGS`**
   — com Gemini (args inteiros) é no-op visível, sem prejuízo (o estado segue via snapshot).

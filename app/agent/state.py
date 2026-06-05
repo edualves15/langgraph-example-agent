@@ -13,11 +13,14 @@ class AgentState(ReActAgentState):
     do agente, que então as vincula ao LLM (sem executá-las — a execução acontece no
     navegador). Ver `app/agent/graph.py`.
 
-    `order` é **estado compartilhado** (agente-owned) do domínio: o pedido atual do
-    cliente. Uma tool o muta retornando `Command(update={"order": ...})` e a lib emite
-    `STATE_SNAPSHOT`/`STATE_DELTA` automaticamente; o front o renderiza genericamente no
-    painel de estado. Ver `update_order` em `app/tools/restaurant_tools.py`.
+    `order` e `reservation` são **estado compartilhado** (agente-owned) do domínio: o
+    rascunho da reserva sendo montado — `order` = pratos escolhidos (`{name, price}`),
+    `reservation` = detalhes (`date`, `time`, `party_size`, `customer_name`). Uma tool os
+    muta retornando `Command(update={...})` e a lib emite `STATE_SNAPSHOT`/`STATE_DELTA`
+    automaticamente; o front os renderiza genericamente no painel de estado. Ver
+    `update_reservation` em `app/tools/restaurant_tools.py`.
     """
 
     tools: list[dict]
     order: list[dict]
+    reservation: dict
