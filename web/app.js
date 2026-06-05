@@ -75,7 +75,7 @@ function buildUserWrapper(text) {
   wrapper.className = "msg-wrapper user";
   const bubble = document.createElement("div");
   bubble.className = "bubble";
-  bubble.textContent = text;
+  bubble.innerHTML = renderMarkdown(text);
   wrapper.appendChild(bubble);
   return wrapper;
 }
