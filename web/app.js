@@ -5,6 +5,7 @@
 import { HttpAgent } from "https://esm.sh/@ag-ui/client@0.0.55";
 import { renderMarkdown } from "./markdown.js";
 import { SVG } from "./icons.js";
+import { FRONTEND_TOOLS, mountFrontendTools } from "./frontend-tools.js";
 
 // Constantes — fonte única para valores que aparecem em múltiplos contextos.
 const ACCENT_COLOR = "#6ea8fe";        // sincronizar com --accent em styles.css
@@ -40,6 +41,63 @@ const approvalEl = $("approval");
 const approvalText = $("approval-text");
 
 threadEl.textContent = "thread: " + agent.threadId;
+
+// ---------------------------------------------------------------------------
+// Frontend tools (ações client-side). O cliente é genérico: só itera o registry,
+// anuncia os schemas ao agente e executa os handlers no navegador. Toda a lógica
+// específica do app vive em frontend-tools.js.
+// ---------------------------------------------------------------------------
+const FT_BY_NAME = new Map(FRONTEND_TOOLS.map((t) => [t.name, t]));
+const FT_SCHEMAS = FRONTEND_TOOLS.map(({ name, description, parameters }) => ({
+  name,
+  description,
+  parameters,
+}));
+const executedToolCalls = new Set(); // toolCallId já executados no navegador
+mountFrontendTools($("frontend-tools-mount"));
+
+// Roda o agente anunciando as frontend tools e, sempre que ele chamar uma delas,
+// executa o handler no navegador, devolve o resultado como ToolMessage e roda de
+// novo — até o agente parar de chamá-las (mesmo loop ReAct, fechado pelo cliente).
+async function runWithFrontendTools(params) {
+  await agent.runAgent({ ...params, tools: FT_SCHEMAS });
+
+  const messages = agent.messages || [];
+  const answered = new Set(
+    messages.filter((m) => m.role === "tool").map((m) => m.toolCallId),
+  );
+  let executedAny = false;
+
+  for (const m of messages) {
+    const calls = m.toolCalls || m.tool_calls || [];
+    for (const call of calls) {
+      const name = call.function?.name || call.name;
+      if (!FT_BY_NAME.has(name) || answered.has(call.id) || executedToolCalls.has(call.id)) {
+        continue;
+      }
+      executedToolCalls.add(call.id);
+      let args = call.function?.arguments ?? call.args ?? {};
+      if (typeof args === "string") {
+        try { args = JSON.parse(args); } catch { args = {}; }
+      }
+      let content;
+      try {
+        content = await FT_BY_NAME.get(name).handler(args || {});
+      } catch (err) {
+        content = "Erro ao executar a ferramenta no navegador: " + (err?.message || err);
+      }
+      agent.addMessage({
+        id: crypto.randomUUID(),
+        role: "tool",
+        content: String(content),
+        toolCallId: call.id,
+      });
+      executedAny = true;
+    }
+  }
+
+  if (executedAny) await runWithFrontendTools({ runId: crypto.randomUUID() });
+}
 
 // Estado de renderização (correlação por id, conforme o protocolo).
 const assistantBubbles = new Map(); // messageId -> { el, body }
@@ -466,7 +524,7 @@ async function resolveApproval(approved) {
   sendBtn.disabled = true;
   // Retoma a MESMA thread com um booleano (convenção genérica approve/reject).
   // O backend interpreta `command.resume` como quiser; a lib o repassa verbatim.
-  await agent.runAgent({
+  await runWithFrontendTools({
     runId: crypto.randomUUID(),
     forwardedProps: { command: { resume: approved } },
   });
@@ -486,7 +544,7 @@ async function send(text) {
 
   agent.addMessage({ id: crypto.randomUUID(), role: "user", content: text });
   try {
-    await agent.runAgent({ runId: crypto.randomUUID() });
+    await runWithFrontendTools({ runId: crypto.randomUUID() });
   } catch (err) {
     console.error(err);
     finalizeRun("error");

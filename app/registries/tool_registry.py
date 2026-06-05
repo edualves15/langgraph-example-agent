@@ -11,7 +11,7 @@ from app.tools.calendar_tools import (
     list_dates_in_range,
     shift_date,
 )
-from app.tools.agui_demo_tools import add_proverb, send_email, set_proverbs
+from app.tools.email_tools import send_email
 from app.tools.math_tools import calculate_math_expression
 
 CALENDAR_TOOLS = [
@@ -25,15 +25,12 @@ CALENDAR_TOOLS = [
     list_dates_in_range,
 ]
 
-# Ferramentas que demonstram estado compartilhado (STATE_*) e human-in-the-loop.
-AGUI_DEMO_TOOLS = [add_proverb, set_proverbs, send_email]
-
 
 def get_local_tools() -> list[BaseTool]:
     tools: list[BaseTool] = [
         *CALENDAR_TOOLS,
         calculate_math_expression,
-        *AGUI_DEMO_TOOLS,
+        send_email,
     ]
     if settings.tavily_api_key:
         from app.tools.web_search import web_search, web_extract

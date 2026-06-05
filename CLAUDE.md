@@ -94,14 +94,26 @@ montado em `/` **por último** para não capturar
 
 ### LangGraph graph (`app/agent/graph.py`)
 
-Usa o prebuilt oficial `create_react_agent` (loop ReAct agente↔ferramentas):
+`StateGraph` custom (loop ReAct), **não** o prebuilt `create_react_agent` — porque o
+`ToolNode` do prebuilt executaria **toda** tool call, e precisamos distinguir tools de
+**backend** (executadas no servidor) de tools de **frontend** (anunciadas pelo cliente
+em runtime e executadas no navegador). Estrutura:
 
-- `model` = `get_llm()` (Gemini).
-- `prompt` = callable `_prompt(state)` que injeta o system prompt (via
-  `get_system_prompt()`, ver **Prompts**) com a data de hoje.
+- Nó `agent` (async): monta `_prompt(state)` (system prompt + `messages`) e vincula ao
+  LLM **as tools de backend (`get_local_tools()`) + os schemas das tools de frontend**.
+  Estes vêm de `state["tools"]` (a lib `ag_ui_langgraph` escreve ali as tools do
+  `RunAgentInput.tools`), convertidos por `_frontend_tool_schemas(...)` para
+  `{"type":"function","function":{...}}` — excluindo nomes que colidam com tools de
+  backend (o backend vence).
+- Roteamento (`route`): sem `tool_calls` → `END`; se **toda** chamada for de tool de
+  backend → nó `tools` (`ToolNode`, executa no servidor); se houver chamada a tool de
+  frontend → `END` (a lib já emitiu `TOOL_CALL_*`; o navegador executa e retoma com um
+  `ToolMessage` no run seguinte). Assume 1 tool call por passo (padrão do Gemini).
+- `model` = `get_llm()` (Gemini); `prompt` via `_prompt(state)` (`get_system_prompt()`
+  com a data de hoje, ver **Prompts**).
 - `state_schema` = `AgentState` (`app/agent/state.py`): estende o `AgentState` do
-  prebuilt (`messages` + `add_messages`, `remaining_steps`) e adiciona `proverbs:
-  list[str]` como **estado compartilhado** exposto à UI.
+  prebuilt (`messages` + `add_messages`, `remaining_steps`) e declara `tools: list[dict]`
+  (as tools de frontend, para o nó `agent` poder lê-las).
 - `checkpointer` = `MemorySaver` (necessário para threads e human-in-the-loop).
 
 ### Eventos AG-UI (wire format — verificável no console/Network)
@@ -118,20 +130,33 @@ Usa o prebuilt oficial `create_react_agent` (loop ReAct agente↔ferramentas):
 
 Página estática servida pelo FastAPI, sem build step:
 
-- **Desacoplamento TOTAL.** O front é um cliente AG-UI **100% genérico** — renderiza
-  **apenas com o que o protocolo fornece em runtime** (eventos SSE via `@ag-ui/client`),
-  sem build/imports compartilhados e **sem nenhum conhecimento de negócio** (nomes de
-  tools, shape de estado/interrupt, sugestões). Funciona com **qualquer** backend
-  AG-UI/LangGraph; a única fronteira é o protocolo. **Não reintroduza `agent-config.js`
-  nem literais específicos do agente no front.** Consequências (informação perdida, por
-  escolha): rótulos de atividade = `stepName`/`toolCallName` crus; tool cards **sem** badge
-  de origem (o protocolo não expõe origem); **sem** sugestões.
-- `index.html` — 4 painéis: chat, estado, tool calls, log de eventos AG-UI. Sem literais
-  do agente (slot de sugestões vazio; painel de estado genérico).
+- **Cliente genérico + fronteira de tools de frontend.** `app.js` é um cliente AG-UI
+  **genérico** — renderiza **apenas com o que o protocolo fornece em runtime** (eventos
+  SSE via `@ag-ui/client`) e **não conhece nomes de tools, shape de estado/interrupt nem
+  sugestões**. A **única** lógica de negócio do front vive isolada em
+  **`frontend-tools.js`** (as ações client-side, ver abaixo): `app.js` apenas itera esse
+  registry pluggável. **Não coloque literais do agente em `app.js`** (se
+  `FRONTEND_TOOLS = []`, `app.js` volta a ser 100% genérico). Consequências (por escolha):
+  rótulos de atividade = `stepName`/`toolCallName` crus; tool cards **sem** badge de
+  origem (o protocolo não expõe origem); **sem** sugestões.
+- `frontend-tools.js` — **registry de tools de frontend** (ações client-side deste app, o
+  único lugar com conhecimento de negócio no front). Exporta `FRONTEND_TOOLS`
+  (`{ name, description, parameters, handler }`) e `mountFrontendTools(el)`. Cada `handler`
+  roda no **navegador** e retorna a string que vira o `ToolMessage` devolvido ao agente.
+  Demo atual: `setProverbs`/`addProverb` (estado **dono da UI**, renderizado no slot
+  `#frontend-tools-mount`). Ver https://docs.ag-ui.com/concepts/tools.
+- `index.html` — painel de chat + lateral (abas estado/tool calls/eventos) + slot
+  `#frontend-tools-mount`. Sem literais do agente (slot de sugestões vazio; painel de
+  estado genérico).
 - `app.js` — `new HttpAgent({ url: "/agent" })` + `agent.subscribe(subscriber)`.
   O subscriber implementa um handler por categoria (`onTextMessageContentEvent`,
   `onToolCallStartEvent`, `onStateSnapshotEvent`, `onCustomEvent`, …) e o catch-all
   `onEvent` loga cada evento no painel e no `console`.
+  - **Tools de frontend:** `runWithFrontendTools(params)` envolve `agent.runAgent`,
+    **anunciando** `FT_SCHEMAS` (`tools`) em todo run; ao terminar o run, varre
+    `agent.messages` por chamadas a tools do registry ainda sem `ToolMessage`, executa o
+    `handler` no navegador, devolve o resultado via `agent.addMessage({role:"tool",...})`
+    e **roda de novo** até o agente parar de chamá-las (fecha o loop ReAct no cliente).
   - **Estado genérico:** `renderState(snapshot)` mostra todas as chaves do `STATE_SNAPSHOT`
     **exceto** as protocolares `messages`/`tools` (`PROTOCOL_STATE_KEYS`) — chave→valor,
     sem conhecer o agente.
@@ -147,30 +172,37 @@ Página estática servida pelo FastAPI, sem build step:
   corretor de deslizes do agente (espaço após `#`, etc.). Passe `correct:false` para
   render estrito.
 - `styles.css` — estilo dos painéis e dos elementos Markdown do balão.
-- Envio: `agent.addMessage({id, role:"user", content})` + `agent.runAgent({runId})`.
+- Envio: `agent.addMessage({id, role:"user", content})` + `runWithFrontendTools({runId})`
+  (que sempre anuncia `tools: FT_SCHEMAS`).
 - HITL: ao receber `CUSTOM`/`on_interrupt`, mostra modal; aprovar/rejeitar chama
-  `agent.runAgent({ forwardedProps: { command: { resume: approved } } })` (booleano).
+  `runWithFrontendTools({ forwardedProps: { command: { resume: approved } } })` (booleano).
 - **Uma bolha por `runId`.** Uma "interação" = um run (`RUN_STARTED`→`RUN_FINISHED`,
   mesmo `runId`) e pode conter VÁRIAS mensagens (cada uma com seu `messageId`): um
   preâmbulo junto da tool call + a resposta final após o resultado. O chat mantém **uma
   única bolha por run** e, a cada novo `TEXT_MESSAGE_START`, **substitui** o conteúdo —
   convergindo para a mensagem final e descartando preâmbulos (`runBubble` em `app.js`,
-  resetado em `RUN_FINISHED`/`RUN_ERROR`). HITL atravessa dois runs → duas bolhas
-  (correto: execuções separadas pela aprovação).
+  resetado em `RUN_FINISHED`/`RUN_ERROR`). HITL **e** tools de frontend atravessam dois
+  runs → duas bolhas (correto: execuções separadas pela aprovação/execução no navegador).
 
 ### Adding tools
 
 1. Crie `app/tools/my_tool.py` com `@tool` do `langchain_core.tools`.
 2. Registre em `app/registries/tool_registry.py` → `get_local_tools()`.
 
-Não há metadados de narração — o streaming (`TOOL_CALL_*`) é automático.
+Não há metadados de narração — o streaming (`TOOL_CALL_*`) é automático. Essas são
+tools de **backend** (efeito server-side, executadas no nó `tools`).
 
-- Estado compartilhado: uma tool muta o estado retornando
-  `Command(update={"<chave>": ..., "messages": [ToolMessage(...)]})` (ver
-  `add_proverb`/`set_proverbs` em `app/tools/agui_demo_tools.py`, com
-  `InjectedState` / `InjectedToolCallId`).
+- Estado compartilhado (agente-owned): uma tool muta o estado retornando
+  `Command(update={"<chave>": ..., "messages": [ToolMessage(...)]})` com
+  `InjectedState` / `InjectedToolCallId` (emite `STATE_SNAPSHOT`/`STATE_DELTA`). Sem
+  exemplo no código hoje — a demo de estado migrou para uma tool de frontend.
 - Human-in-the-loop: chame `interrupt(value)` (`langgraph.types`) dentro da própria
-  tool de ação (ver `send_email`); a retomada vem por `Command(resume=...)`.
+  tool de ação (ver `send_email` em `app/tools/email_tools.py`); a retomada vem por
+  `Command(resume=...)`.
+- **Tool de frontend** (executada no **navegador**, não no back): NÃO crie `@tool` no
+  back. Adicione uma entrada em `web/frontend-tools.js` (`{name, description, parameters,
+  handler}`); o `app.js` a anuncia em runtime e o grafo a roteia de volta ao cliente
+  (ver **LangGraph graph**). Use quando a ação manipula UI/estado dono do front.
 
 `web_search` / `web_extract` (Tavily) são carregadas apenas quando `TAVILY_API_KEY` está setada.
 
@@ -185,8 +217,8 @@ System prompt em **pasta**, copy separada do código:
 - `system.md`: o texto. **Totalmente genérico** — papel, idioma, tom (sóbrio,
   profissional, sem emojis), formatação (Markdown quando ajuda) e segurança/limites.
   **Não cita capacidades nem ferramentas**: o "quando/como usar" de cada tool vive **só**
-  na **docstring** da tool (superfície de prompt que o `create_react_agent` expõe ao modelo
-  via tool-calling). Zero acoplamento prompt↔toolset.
+  na **docstring** da tool (superfície de prompt exposta ao modelo via tool-calling, ao
+  vincular as tools no nó `agent`). Zero acoplamento prompt↔toolset.
 - `__init__.py`: `get_system_prompt()` lê `system.md` (via `importlib.resources`) e injeta
   a data no sentinela `{{TODAY}}` por `str.replace` (**não** `str.format` — evita conflito
   com `{`/`}` e crases do Markdown). API consumida por `_prompt(state)` em `graph.py`.

@@ -224,6 +224,30 @@ body {
   overflow-y: auto;
 }
 
+/* Frontend tools (estado dono da UI, renderizado por web/frontend-tools.js) */
+.frontend-tools-panel {
+  flex: 0 0 auto;
+  margin-top: 12px;
+}
+.frontend-tools-mount {
+  padding: 12px 14px;
+  overflow-y: auto;
+  max-height: 220px;
+}
+.frontend-tools-mount .ft-title {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  margin-bottom: 8px;
+}
+.frontend-tools-mount .ft-proverbs {
+  margin: 0;
+  padding-left: 1.4em;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 /* Chat */
 .chat-panel {
   min-height: 0;
