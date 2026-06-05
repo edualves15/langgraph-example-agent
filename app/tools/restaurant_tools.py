@@ -52,9 +52,10 @@ def update_order(
 ) -> Command:
     """Set the customer's current order (shared state shown live in the order panel).
 
-    Use this tool whenever the customer decides which dishes they want — right after they
-    pick dishes — so the order stays up to date on screen. Pass the FULL list of chosen
-    dish ids (this replaces the current order; pass an empty list to clear it).
+    Call this EVERY time the selection changes — right after the customer picks, adds or
+    removes dishes (including selecting cards) — so the order panel stays in sync on screen.
+    Pass the FULL list of chosen dish ids (this replaces the current order; pass an empty
+    list to clear it).
 
     Input:
     - item_ids: the dish ids currently in the order.
@@ -130,15 +131,21 @@ def create_reservation(
     """
     dishes = [_MENU_BY_ID[i]["name"] for i in item_ids if i in _MENU_BY_ID]
 
+    try:
+        date_label = date.fromisoformat(date_iso.strip()).strftime("%d/%m/%Y")
+    except ValueError:
+        date_label = date_iso
+
+    # Conteúdo do interrupt em linguagem do usuário (rótulos PT-BR, sem campos técnicos).
+    # O front genérico mostra `question` em destaque e os demais campos como "Rótulo: valor".
     decision = interrupt(
         {
-            "action": "create_reservation",
-            "customerName": customer_name,
-            "date": date_iso,
-            "time": time,
-            "partySize": party_size,
-            "dishes": dishes,
-            "question": f"Confirmar reserva para {customer_name} em {date_iso} às {time} ({party_size} pessoa(s))?",
+            "question": "Confirmar esta reserva?",
+            "Cliente": customer_name,
+            "Data": date_label,
+            "Horário": time,
+            "Pessoas": party_size,
+            "Pratos": ", ".join(dishes) if dishes else "—",
         }
     )
 

@@ -167,9 +167,11 @@ Página estática servida pelo FastAPI, sem build step:
   - **Estado genérico:** `renderState(snapshot)` mostra todas as chaves do `STATE_SNAPSHOT`
     **exceto** as protocolares `messages`/`tools` (`PROTOCOL_STATE_KEYS`) — chave→valor,
     sem conhecer o agente.
-  - **HITL genérico:** o `value` do interrupt (verbatim, app-defined) é renderizado como
-    JSON, com destaque para um campo textual se houver (`question`/`message`/`description`/
-    `prompt`); approve/reject retoma com **booleano** (`command.resume: true|false`).
+  - **HITL genérico e legível:** o `value` do interrupt (verbatim, app-defined) é
+    renderizado de forma **legível** (não técnica) por `showApproval` — texto-guia em
+    destaque (`question`/`message`/`description`/`prompt`) + os demais campos como linhas
+    "Rótulo: valor" (rótulos humanizados; arrays juntados); **sem JSON**. Pula `action` e a
+    chave-guia. approve/reject retoma com **booleano** (`command.resume: true|false`).
 - `markdown.js` — renderizador Markdown próprio (sem libs), usado nos balões do agente.
   Subconjunto prático/robusto (~GFM): headings 1–6, bold/itálico/bold-itálico,
   strikethrough, code inline/fenced, blockquote (multilinha/aninhado), listas
@@ -178,7 +180,10 @@ Página estática servida pelo FastAPI, sem build step:
   `renderMarkdown(src, { correct })`; `correct` (default `LENIENT=true`) liga um pré-passo
   corretor de deslizes do agente (espaço após `#`, etc.). Passe `correct:false` para
   render estrito.
-- `styles.css` — estilo dos painéis e dos elementos Markdown do balão.
+- `styles.css` — estilo dos painéis e dos elementos Markdown do balão. **Design flat:**
+  cores sólidas + hairlines sólidas (1px), **sem degradês, sombras nem transparências**;
+  hierarquia por tons de superfície (`--surface`/`--surface-hover`/`--surface-sel`); foco
+  via `outline` sólido. Tipografia Inter + JetBrains Mono (links em `index.html`).
 - Envio: `agent.addMessage({id, role:"user", content})` + `runWithFrontendTools({runId})`
   (que sempre anuncia `tools: FT_SCHEMAS`).
 - HITL: ao receber `CUSTOM`/`on_interrupt`, mostra modal; aprovar/rejeitar chama
@@ -202,10 +207,13 @@ tools de **backend** (efeito/dado server-side, executadas no nó `tools`).
 - **Domínio (Restaurante):** `app/tools/restaurant_tools.py` — `get_menu`,
   `get_available_times` (dados server-side), `update_order` (estado compartilhado) e
   `create_reservation`. **Trocar de domínio = trocar este bloco** (e o `RESTAURANT_TOOLS`
-  no registry); calendário e math permanecem.
+  no registry); calendário e math permanecem. O `system.md` instrui o agente a chamar
+  `update_order` **logo após cada escolha** (inclusive nos cards), para o painel de estado
+  atualizar **ao vivo**.
 - Human-in-the-loop: chame `interrupt(value)` (`langgraph.types`) dentro da própria
   tool de ação (ver `create_reservation`); a retomada vem por `Command(resume=...)` e o
-  front mostra o modal `on_interrupt`.
+  front mostra o modal `on_interrupt`. O `value` do interrupt deve ser **legível** (rótulos
+  amigáveis, sem campos técnicos) — o front o renderiza como "Rótulo: valor".
 - Estado compartilhado (agente-owned): uma tool muta o estado retornando
   `Command(update={"<chave>": ..., "messages": [ToolMessage(...)]})` com
   `InjectedState` / `InjectedToolCallId` (emite `STATE_SNAPSHOT`/`STATE_DELTA`; o front o

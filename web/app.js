@@ -512,29 +512,59 @@ function finalizeRun(status) {
 // ---------------------------------------------------------------------------
 // Human-in-the-loop — aprovação e retomada (Command(resume=...))
 // ---------------------------------------------------------------------------
+// Rótulo legível a partir de uma chave (camelCase/snake_case → "Title Case").
+function humanizeLabel(key) {
+  return String(key)
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^./, (c) => c.toUpperCase());
+}
+
+// Valor legível (sem JSON): arrays juntados por vírgula; objetos achatados; resto como texto.
+function humanizeValue(v) {
+  if (Array.isArray(v)) return v.map(humanizeValue).join(", ");
+  if (v && typeof v === "object") return Object.values(v).map(humanizeValue).join(", ");
+  return String(v);
+}
+
+// Renderização GENÉRICA e LEGÍVEL do interrupt (o protocolo passa `value` verbatim,
+// app-defined): texto-guia em destaque + os demais campos como "Rótulo: valor". Sem
+// conhecer nenhuma ação específica e sem despejar JSON.
 function showApproval(value) {
-  // O valor do interrupt pode chegar como objeto ou como string JSON.
   let v = value;
   if (typeof v === "string") {
     try { v = JSON.parse(v); } catch { /* mantém string */ }
   }
-
-  // Renderização GENÉRICA do interrupt (o protocolo passa `value` verbatim, app-defined):
-  // destaca um campo textual (question/message/description/prompt) se houver e mostra o
-  // valor completo como JSON. Sem conhecer nenhuma ação específica.
   approvalText.innerHTML = "";
-  if (v && typeof v === "object") {
-    const lead = v.question || v.message || v.description || v.prompt;
-    if (lead) {
+
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    const LEAD_KEYS = ["question", "message", "description", "prompt"];
+    const leadKey = LEAD_KEYS.find((k) => v[k] != null && v[k] !== "");
+    if (leadKey) {
       const p = document.createElement("p");
       p.className = "approval-lead";
-      p.textContent = String(lead);
+      p.textContent = String(v[leadKey]);
       approvalText.appendChild(p);
     }
-    const pre = document.createElement("pre");
-    pre.className = "approval-json mono";
-    pre.textContent = JSON.stringify(v, null, 2);
-    approvalText.appendChild(pre);
+    const skip = new Set([leadKey, "action"]);
+    const dl = document.createElement("dl");
+    dl.className = "approval-details";
+    for (const [k, val] of Object.entries(v)) {
+      if (skip.has(k) || val == null || val === "") continue;
+      const row = document.createElement("div");
+      row.className = "approval-row";
+      const dt = document.createElement("dt");
+      dt.textContent = humanizeLabel(k);
+      const dd = document.createElement("dd");
+      dd.textContent = humanizeValue(val);
+      row.appendChild(dt);
+      row.appendChild(dd);
+      dl.appendChild(row);
+    }
+    if (dl.children.length) approvalText.appendChild(dl);
+    if (!leadKey && !dl.children.length) approvalText.textContent = "Confirmar ação?";
   } else {
     approvalText.textContent = v != null && v !== "" ? String(v) : "Confirmar ação?";
   }
