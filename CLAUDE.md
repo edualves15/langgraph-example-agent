@@ -200,15 +200,17 @@ Não há metadados de narração — o streaming (`TOOL_CALL_*`) é automático.
 tools de **backend** (efeito/dado server-side, executadas no nó `tools`).
 
 - **Domínio (Restaurante):** `app/tools/restaurant_tools.py` — `get_menu`,
-  `get_available_times` (dados server-side) e `create_reservation`. **Trocar de domínio =
-  trocar este bloco** (e o `RESTAURANT_TOOLS` no registry); calendário e math permanecem.
+  `get_available_times` (dados server-side), `update_order` (estado compartilhado) e
+  `create_reservation`. **Trocar de domínio = trocar este bloco** (e o `RESTAURANT_TOOLS`
+  no registry); calendário e math permanecem.
 - Human-in-the-loop: chame `interrupt(value)` (`langgraph.types`) dentro da própria
   tool de ação (ver `create_reservation`); a retomada vem por `Command(resume=...)` e o
   front mostra o modal `on_interrupt`.
-- Estado compartilhado (agente-owned), se precisar: uma tool muta o estado retornando
+- Estado compartilhado (agente-owned): uma tool muta o estado retornando
   `Command(update={"<chave>": ..., "messages": [ToolMessage(...)]})` com
-  `InjectedState` / `InjectedToolCallId` (emite `STATE_SNAPSHOT`/`STATE_DELTA`). Sem
-  exemplo no código hoje.
+  `InjectedState` / `InjectedToolCallId` (emite `STATE_SNAPSHOT`/`STATE_DELTA`; o front o
+  renderiza genericamente no painel de estado). Exemplo: `update_order` muta `order`
+  (campo declarado em `AgentState`), o pedido atual do cliente.
 - **Tool de frontend** (executada no **navegador**, não no back): NÃO crie `@tool` no
   back. As tools de UI genéricas já existem em `web/frontend-tools.js` (`present_cards`/
   `present_options`/`confirm_dialog`); o agente as usa passando os dados do domínio. Para

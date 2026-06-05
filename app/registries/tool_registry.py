@@ -16,6 +16,7 @@ from app.tools.restaurant_tools import (
     create_reservation,
     get_available_times,
     get_menu,
+    update_order,
 )
 
 CALENDAR_TOOLS = [
@@ -30,7 +31,7 @@ CALENDAR_TOOLS = [
 ]
 
 # Tools do domínio atual (Restaurante). Trocar de domínio = trocar este bloco.
-RESTAURANT_TOOLS = [get_menu, get_available_times, create_reservation]
+RESTAURANT_TOOLS = [get_menu, update_order, get_available_times, create_reservation]
 
 
 def get_local_tools() -> list[BaseTool]:

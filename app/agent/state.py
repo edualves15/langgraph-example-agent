@@ -12,6 +12,12 @@ class AgentState(ReActAgentState):
     essa lista em `state["tools"]`; declará-la aqui é o que a torna **legível** pelo nó
     do agente, que então as vincula ao LLM (sem executá-las — a execução acontece no
     navegador). Ver `app/agent/graph.py`.
+
+    `order` é **estado compartilhado** (agente-owned) do domínio: o pedido atual do
+    cliente. Uma tool o muta retornando `Command(update={"order": ...})` e a lib emite
+    `STATE_SNAPSHOT`/`STATE_DELTA` automaticamente; o front o renderiza genericamente no
+    painel de estado. Ver `update_order` em `app/tools/restaurant_tools.py`.
     """
 
     tools: list[dict]
+    order: list[dict]

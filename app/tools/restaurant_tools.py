@@ -11,9 +11,12 @@ aqui e os apresenta através daquelas tools de UI.
 
 import json
 from datetime import date
+from typing import Annotated
 
-from langchain_core.tools import tool
-from langgraph.types import interrupt
+from langchain_core.messages import ToolMessage
+from langchain_core.tools import InjectedToolCallId, tool
+from langgraph.prebuilt import InjectedState
+from langgraph.types import Command, interrupt
 
 
 # Fonte de verdade do cardápio (server-side). Trocar o domínio = trocar estes dados/tools.
@@ -39,6 +42,42 @@ def get_menu() -> str:
     Returns a JSON array of objects: {id, name, description, price}.
     """
     return json.dumps(_MENU, ensure_ascii=False)
+
+
+@tool
+def update_order(
+    item_ids: list[str],
+    state: Annotated[dict, InjectedState],
+    tool_call_id: Annotated[str, InjectedToolCallId],
+) -> Command:
+    """Set the customer's current order (shared state shown live in the order panel).
+
+    Use this tool whenever the customer decides which dishes they want — right after they
+    pick dishes — so the order stays up to date on screen. Pass the FULL list of chosen
+    dish ids (this replaces the current order; pass an empty list to clear it).
+
+    Input:
+    - item_ids: the dish ids currently in the order.
+
+    Returns a short confirmation; the updated order is emitted to the UI as shared state.
+    """
+    items = [
+        {"name": _MENU_BY_ID[i]["name"], "price": _MENU_BY_ID[i]["price"]}
+        for i in item_ids
+        if i in _MENU_BY_ID
+    ]
+    total = round(sum(it["price"] for it in items), 2)
+    return Command(
+        update={
+            "order": items,
+            "messages": [
+                ToolMessage(
+                    content=f"Pedido atualizado: {len(items)} item(ns), total {total}.",
+                    tool_call_id=tool_call_id,
+                )
+            ],
+        }
+    )
 
 
 @tool
