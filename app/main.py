@@ -26,11 +26,11 @@ app = FastAPI(title="LangGraph Private Agent — AG-UI", version="0.2.0")
 # ---------------------------------------------------------------------------
 # Agente oficial AG-UI sobre LangGraph
 # ---------------------------------------------------------------------------
-# O LangGraphAgent mapeia os eventos do LangGraph para os eventos canônicos do
-# protocolo AG-UI. O endpoint abaixo replica `add_langgraph_fastapi_endpoint`
-# (mesmos primitivos oficiais: agent.run + EventEncoder), mas envolve o stream
-# com tratamento de erros resiliente: nada vaza como traceback e toda falha é
-# entregue ao cliente como um evento `RUN_ERROR` oficial.
+# O endpoint abaixo replica `add_langgraph_fastapi_endpoint` com os **mesmos
+# primitivos oficiais** (`agent.clone().run` + `EventEncoder`), mas envolve o stream
+# num wrap fino de erro: em qualquer exceção, emite um `RUN_ERROR` — o evento
+# **canônico** do protocolo para sinalizar falha (`ag_ui.core.RunErrorEvent`) — em vez
+# de derrubar o SSE cru. É 100% protocolar; o helper puro apenas não oferece isso.
 graph = build_graph()
 agent = LangGraphAgent(name="private-agent", graph=graph)
 
@@ -40,7 +40,7 @@ logger.info("Agente AG-UI inicializado.")
 @app.post("/agent")
 async def agent_endpoint(input_data: RunAgentInput, request: Request) -> StreamingResponse:
     encoder = EventEncoder(accept=request.headers.get("accept"))
-    request_agent = agent.clone()  # estado isolado por requisição
+    request_agent = agent.clone()  # estado isolado por requisição (oficial)
 
     async def event_generator() -> AsyncIterator[str]:
         try:
@@ -50,11 +50,7 @@ async def agent_endpoint(input_data: RunAgentInput, request: Request) -> Streami
             message = describe_error(exc)
             logger.error("Falha durante a execução do agente: %s", message)
             yield encoder.encode(
-                RunErrorEvent(
-                    type=EventType.RUN_ERROR,
-                    message=message,
-                    code="agent_run_error",
-                )
+                RunErrorEvent(type=EventType.RUN_ERROR, message=message, code="agent_run_error")
             )
 
     return StreamingResponse(event_generator(), media_type=encoder.get_content_type())

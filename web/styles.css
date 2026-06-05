@@ -513,6 +513,11 @@ body {
   gap: 8px;
   padding: 0 16px 12px;
 }
+/* Slot genérico: sem sugestões, não ocupa espaço. */
+.suggestions:empty {
+  display: none;
+  padding: 0;
+}
 .suggestions button {
   background: var(--panel-2);
   color: var(--text);
@@ -697,7 +702,7 @@ body {
   font-size: 10px;
 }
 
-.proverbs {
+.state-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -705,7 +710,7 @@ body {
   flex-direction: column;
   gap: 6px;
 }
-.proverbs li {
+.state-list > li {
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent-2);
@@ -713,8 +718,30 @@ body {
   padding: 8px 10px;
   font-size: 13px;
 }
-.proverbs li.empty {
+.state-list > li.empty {
   border-left-color: var(--border);
+  color: var(--muted);
+  font-style: italic;
+}
+/* Entrada genérica chave → valor do estado compartilhado */
+.state-entry .state-key {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--accent-2);
+  margin-bottom: 4px;
+}
+.state-entry .state-val ul {
+  list-style: disc;
+  margin: 0;
+  padding-left: 18px;
+}
+.state-entry .state-val pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+}
+.state-entry .state-val .empty {
   color: var(--muted);
   font-style: italic;
 }
@@ -747,29 +774,6 @@ body {
   background: var(--tool);
   flex: 0 0 auto;
   animation: pulse 1.2s infinite;
-}
-.tool-card .t-head .ttag {
-  flex: 0 0 auto;
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-  padding: 2px 7px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  white-space: nowrap;
-}
-.ttag-agent {
-  color: #6ea8fe;
-  border-color: #2f4d72;
-}
-.ttag-hitl {
-  color: #d2a8ff;
-  border-color: #4a3a6e;
-}
-.ttag-frontend {
-  color: var(--accent-2);
-  border-color: #2f5e3a;
 }
 .tool-card .t-head .tname {
   font-weight: 600;
@@ -954,23 +958,22 @@ body {
 .approval-hint code {
   font-family: var(--mono);
 }
-.email-draft {
+/* Modal de aprovação genérico: campo textual em destaque + valor cru (JSON). */
+.approval-lead {
+  text-align: left;
+  margin: 0 0 10px;
+  font-weight: 600;
+}
+.approval-json {
   text-align: left;
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px 14px;
-  font-size: 13px;
-}
-.email-draft .k {
-  color: var(--muted);
-  margin-right: 6px;
-}
-.email-draft .email-body {
-  margin: 10px 0 0;
+  font-size: 12px;
+  font-family: var(--mono);
   white-space: pre-wrap;
-  word-wrap: break-word;
-  font-family: inherit;
-  border-top: 1px solid var(--border);
-  padding-top: 10px;
+  word-break: break-word;
+  max-height: 40vh;
+  overflow: auto;
 }

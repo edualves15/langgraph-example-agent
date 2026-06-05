@@ -46,48 +46,22 @@ def _safe_eval_math_node(node: ast.AST) -> Number:
 @tool
 def calculate_math_expression(expression: str) -> str:
     """
-    Calculate exact mathematical expressions.
+    Compute an exact arithmetic expression and return the numeric result.
 
-    Use this tool whenever the user asks for exact numeric computation,
-    especially when the request includes:
-    - arithmetic
-    - percentages
-    - totals
-    - differences
-    - averages
-    - multiplications
-    - divisions
-    - powers
-    - modulo operations
-    - financial calculations
-    - parenthesized multi-step calculations
+    Use this tool when the user needs exact numeric computation: arithmetic,
+    percentages, totals, differences, averages, multiplications, divisions, powers,
+    modulo, financial calculations, or parenthesized multi-step math. Prefer it over
+    computing mentally.
 
-    Supported operations:
-    - addition: 2 + 2
-    - subtraction: 10 - 3
-    - multiplication: 4 * 5
-    - division: 20 / 4
-    - floor division: 20 // 3
-    - exponentiation: 2 ** 8
-    - modulo: 10 % 3
-    - unary signs: -5, +5
-    - parentheses: (2 + 3) * 4
+    Input:
+    - expression: a pure arithmetic expression. Operators: + - * / // ** % , unary
+      + -, and parentheses. Use "." as the decimal separator (not commas). Do NOT
+      include words, units, currency symbols, variables, or functions such as sqrt(),
+      sin(), cos(), log(), or abs().
 
-    Input requirements:
-    - Provide only the mathematical expression.
-    - Do not include natural language, currency symbols, or units.
-    - Use "." as the decimal separator (not commas).
-    - Use "*" for multiplication, "/" for division, "**" for powers.
-    - Do not use functions such as sqrt(), sin(), cos(), log(), or abs().
-    - Do not use variables.
+    Good inputs: "25 * 4 + 10", "(1000 * 0.15) + 300", "((42 - 7) / 5) ** 2".
 
-    Good inputs:
-    - "25 * 4 + 10"
-    - "(1000 * 0.15) + 300"
-    - "((42 - 7) / 5) ** 2"
-
-    Returns:
-    - The computed numeric result as a string.
+    Returns the computed numeric result as a string.
     """
     expression = expression.strip()
 

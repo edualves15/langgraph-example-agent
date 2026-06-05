@@ -12,7 +12,5 @@ class Settings(BaseSettings):
 
     tavily_api_key: str = ""
 
-    max_tool_calls: int = 10
-
 
 settings = Settings()

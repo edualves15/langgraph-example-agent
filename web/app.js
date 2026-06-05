@@ -5,6 +5,11 @@
 import { HttpAgent } from "https://esm.sh/@ag-ui/client@0.0.55";
 import { renderMarkdown } from "./markdown.js";
 
+// Cliente AG-UI 100% GENÉRICO: renderiza apenas com o que o protocolo fornece em
+// runtime (eventos SSE). Não conhece nomes de ferramentas, regras de negócio nem o
+// formato do estado/interrupt de um agente específico — funciona com qualquer backend
+// AG-UI/LangGraph. A única "fronteira" com o back é o protocolo.
+
 // O bundle ESM do @ag-ui/client desestrutura `fetch` de globalThis perdendo o
 // vínculo com Window. Re-bind antes de qualquer uso da biblioteca.
 globalThis.fetch = globalThis.fetch.bind(globalThis);
@@ -21,7 +26,7 @@ const $ = (id) => document.getElementById(id);
 const chatEl = $("chat");
 const logEl = $("log");
 const toolsEl = $("tools");
-const proverbsEl = $("proverbs");
+const stateEl = $("state-list");
 const statusEl = $("status");
 const threadEl = $("thread");
 const inputEl = $("input");
@@ -109,32 +114,6 @@ let runStartTime = null;
 let runTimerInterval = null;
 let currentAction = "pensando";
 
-const ACTION_LABELS = {
-  // Steps
-  agent: "pensando",
-  tools: "usando ferramentas",
-  // Ferramentas de calendário
-  get_today_info: "consultando data de hoje",
-  get_date_details: "analisando data",
-  calculate_date_difference: "calculando diferença entre datas",
-  shift_date: "ajustando data",
-  count_business_days: "contando dias úteis",
-  add_business_days: "adicionando dias úteis",
-  find_next_weekday: "buscando próximo dia útil",
-  list_dates_in_range: "listando datas no intervalo",
-  // Demais ferramentas
-  calculate_math_expression: "calculando expressão",
-  add_proverb: "adicionando provérbio",
-  set_proverbs: "atualizando provérbios",
-  send_email: "preparando e-mail",
-  tavily_search: "pesquisando na web",
-  tavily_extract: "extraindo conteúdo web",
-};
-
-function actionLabel(name) {
-  return ACTION_LABELS[name] || name;
-}
-
 function formatElapsed(ms) { return (ms / 1000).toFixed(1) + "s"; }
 
 function timerLabel() {
@@ -207,16 +186,53 @@ function escapeHtml(s) {
   return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 }
 
-function renderProverbs(proverbs) {
-  proverbsEl.innerHTML = "";
-  if (!proverbs || proverbs.length === 0) {
-    proverbsEl.innerHTML = `<li class="empty">— vazio —</li>`;
+// Chaves que o protocolo AG-UI/LangGraph sempre injeta no STATE_SNAPSHOT
+// (conversa e tools de frontend). Não são "estado de negócio" — ficam fora do painel.
+const PROTOCOL_STATE_KEYS = new Set(["messages", "tools"]);
+
+// Renderiza GENERICAMENTE o estado compartilhado: cada chave (exceto as protocolares)
+// como chave → valor. Sem conhecer nenhum agente específico — funciona com qualquer
+// shape de estado vindo do STATE_SNAPSHOT.
+function renderState(state) {
+  stateEl.innerHTML = "";
+  const keys = state && typeof state === "object"
+    ? Object.keys(state).filter((k) => !PROTOCOL_STATE_KEYS.has(k))
+    : [];
+  if (keys.length === 0) {
+    stateEl.innerHTML = `<li class="empty">— vazio —</li>`;
     return;
   }
-  for (const p of proverbs) {
+  for (const k of keys) {
+    const v = state[k];
     const li = document.createElement("li");
-    li.textContent = p;
-    proverbsEl.appendChild(li);
+    li.className = "state-entry";
+    const keyEl = document.createElement("div");
+    keyEl.className = "state-key";
+    keyEl.textContent = k;
+    const valEl = document.createElement("div");
+    valEl.className = "state-val";
+    if (Array.isArray(v)) {
+      if (v.length === 0) {
+        valEl.innerHTML = `<span class="empty">[]</span>`;
+      } else {
+        const ul = document.createElement("ul");
+        for (const item of v) {
+          const it = document.createElement("li");
+          it.textContent = typeof item === "string" ? item : JSON.stringify(item);
+          ul.appendChild(it);
+        }
+        valEl.appendChild(ul);
+      }
+    } else if (v && typeof v === "object") {
+      const pre = document.createElement("pre");
+      pre.textContent = JSON.stringify(v, null, 2);
+      valEl.appendChild(pre);
+    } else {
+      valEl.textContent = String(v);
+    }
+    li.appendChild(keyEl);
+    li.appendChild(valEl);
+    stateEl.appendChild(li);
   }
 }
 
@@ -244,21 +260,6 @@ function setToolArgs(t, raw) {
   t.argsShown = true;
 }
 
-// Classificação por origem (quem iniciou a chamada), não pela função da tool.
-// O protocolo AG-UI não expõe um campo "source"; a origem é inferida pelo nome.
-const TOOL_ORIGINS = {
-  send_email: "hitl",
-};
-const ORIGIN_LABELS = {
-  agent:    { key: "agent",    label: "🤖 LangGraph" },
-  hitl:     { key: "hitl",     label: "👤 interativo" },
-  frontend: { key: "frontend", label: "🖥️ Frontend" },
-};
-function toolOrigin(name) {
-  const key = TOOL_ORIGINS[name] || "agent";
-  return ORIGIN_LABELS[key];
-}
-
 // ---------------------------------------------------------------------------
 // Subscriber oficial — um handler por categoria de evento AG-UI.
 // ---------------------------------------------------------------------------
@@ -268,12 +269,12 @@ const subscriber = {
 
   // Lifecycle
   onStepStartedEvent: ({ event }) => {
-    currentAction = actionLabel(event.stepName);
+    currentAction = event.stepName || "trabalhando";
   },
   onRunStartedEvent: () => {
     setStatus("running");
     runStartTime = Date.now();
-    currentAction = actionLabel("agent");
+    currentAction = "trabalhando";
     const block = createAgentWrapper("spinner", "Working… (0.0s · " + currentAction + ")", "");
     chatEl.appendChild(block.wrapper);
     chatEl.scrollTop = chatEl.scrollHeight;
@@ -352,7 +353,7 @@ const subscriber = {
 
   // Tool calls
   onToolCallStartEvent: ({ event }) => {
-    currentAction = actionLabel(event.toolCallName);
+    currentAction = event.toolCallName || "usando ferramenta";
     // Dedup: durante o resume de HITL o backend reemite TOOL_CALL_START para o
     // mesmo tool_call_id (nova instância do agente com streamed_tool_call_ids vazio).
     // O card existente receberá o resultado quando TOOL_CALL_RESULT chegar.
@@ -360,14 +361,13 @@ const subscriber = {
       bumpBadge("tools");
       return;
     }
-    const origin = toolOrigin(event.toolCallName);
+    // O protocolo AG-UI não expõe "origem" da tool call — mostramos só o nome cru.
     const card = document.createElement("div");
     card.className = "tool-card collapsed";
     card.innerHTML =
       `<div class="t-head" role="button" tabindex="0">` +
         `<span class="tog">▶</span>` +
         `<span class="dot"></span>` +
-        `<span class="ttag ttag-${origin.key}">${origin.label}</span>` +
         `<span class="tname">${escapeHtml(event.toolCallName)}</span>` +
         `<span class="tid">${escapeHtml(event.toolCallId.slice(0, 8))}</span>` +
       `</div>` +
@@ -431,10 +431,10 @@ const subscriber = {
     }
   },
 
-  // Estado compartilhado
-  onStateSnapshotEvent: ({ event }) => renderProverbs(event.snapshot?.proverbs),
+  // Estado compartilhado — renderiza genericamente todo o snapshot.
+  onStateSnapshotEvent: ({ event }) => renderState(event.snapshot),
   // onStateChanged dá o estado reconstruído (após snapshot OU delta) — fonte única.
-  onStateChanged: ({ state }) => renderProverbs(state?.proverbs),
+  onStateChanged: ({ state }) => renderState(state),
 
   // Human-in-the-loop: interrupt chega como CUSTOM com name "on_interrupt".
   onCustomEvent: ({ event }) => {
@@ -462,17 +462,24 @@ function showApproval(value) {
     try { v = JSON.parse(v); } catch { /* mantém string */ }
   }
 
-  if (v && typeof v === "object" && v.action === "send_email") {
-    // Demo de envio de e-mail: mostra o rascunho completo para aprovação.
-    approvalText.innerHTML =
-      `<div class="email-draft">` +
-      `<div><span class="k">Para:</span> ${escapeHtml(v.to || "")}</div>` +
-      `<div><span class="k">Assunto:</span> ${escapeHtml(v.subject || "")}</div>` +
-      `<pre class="email-body">${escapeHtml(v.body || "")}</pre>` +
-      `</div>`;
+  // Renderização GENÉRICA do interrupt (o protocolo passa `value` verbatim, app-defined):
+  // destaca um campo textual (question/message/description/prompt) se houver e mostra o
+  // valor completo como JSON. Sem conhecer nenhuma ação específica.
+  approvalText.innerHTML = "";
+  if (v && typeof v === "object") {
+    const lead = v.question || v.message || v.description || v.prompt;
+    if (lead) {
+      const p = document.createElement("p");
+      p.className = "approval-lead";
+      p.textContent = String(lead);
+      approvalText.appendChild(p);
+    }
+    const pre = document.createElement("pre");
+    pre.className = "approval-json";
+    pre.textContent = JSON.stringify(v, null, 2);
+    approvalText.appendChild(pre);
   } else {
-    const text = (v && typeof v === "object" && (v.question || v.action)) || v || "Confirmar ação?";
-    approvalText.textContent = typeof text === "string" ? text : JSON.stringify(text);
+    approvalText.textContent = v != null && v !== "" ? String(v) : "Confirmar ação?";
   }
   approvalEl.classList.remove("hidden");
 }
@@ -481,10 +488,11 @@ async function resolveApproval(approved) {
   approvalEl.classList.add("hidden");
   setStatus("running");
   sendBtn.disabled = true;
-  // Retoma a MESMA thread enviando o comando de resume ao LangGraph.
+  // Retoma a MESMA thread com um booleano (convenção genérica approve/reject).
+  // O backend interpreta `command.resume` como quiser; a lib o repassa verbatim.
   await agent.runAgent({
     runId: crypto.randomUUID(),
-    forwardedProps: { command: { resume: { approved } } },
+    forwardedProps: { command: { resume: approved } },
   });
 }
 
