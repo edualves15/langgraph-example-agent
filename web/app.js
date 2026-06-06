@@ -5,7 +5,7 @@
 import { HttpAgent } from "https://esm.sh/@ag-ui/client@0.0.55";
 import { renderMarkdown } from "./markdown.js";
 import { SVG } from "./icons.js";
-import { FRONTEND_TOOLS } from "./frontend-tools.js";
+import { FRONTEND_TOOLS, STATE_TAG_ICONS } from "./frontend-tools.js";
 
 // Constantes — fonte única para valores que aparecem em múltiplos contextos.
 const ACCENT_COLOR = "#6ea8fe";        // sincronizar com --accent em styles.css
@@ -41,6 +41,7 @@ const inputEl = $("input");
 const sendBtn = $("send");
 const approvalEl = $("approval");
 const approvalText = $("approval-text");
+const stateTagsEl = $("state-tags");
 
 threadEl.textContent = "thread: " + agent.threadId;
 
@@ -70,7 +71,9 @@ let predicted = {};   // overlay otimista (state_key -> valor)
 let predictMap = [];  // mapeamento vindo do evento PredictState
 
 function applyState() {
-  renderState({ ...lastState, ...predicted });
+  const merged = { ...lastState, ...predicted };
+  renderState(merged);
+  renderStateTags(merged);
 }
 
 // Aplica a previsão otimista: se `toolName` está no mapeamento, lê `tool_argument` dos
@@ -89,19 +92,28 @@ function applyPredict(toolName, rawArgs) {
 }
 
 // Cria um bloco INLINE no chat onde uma frontend tool renderiza seu componente
-// interativo. Devolve o container (nó DOM) passado ao handler.
-function createToolUiBlock(toolName) {
+// interativo. Apresentado como mensagem do agente — rótulo "Agent (<duração>)",
+// espelhando a bolha de agente concluída — em vez de expor o nome cru da tool.
+// Devolve o container (nó DOM) passado ao handler.
+function createToolUiBlock() {
+  const label = lastRunElapsed ? agentLabelHTML(lastRunElapsed) : "Agent";
   const wrapper = document.createElement("div");
   wrapper.className = "msg-wrapper assistant tool-ui";
   wrapper.innerHTML =
     `<div class="msg-header">` +
-      `<span class="avatar avatar-tool" aria-hidden="true">${SVG.tools || ""}</span>` +
-      `<div class="who mono">${escapeHtml(toolName)}</div>` +
+      `<span class="avatar" aria-hidden="true" style="display:none"></span>` +
+      `<div class="who">${label}</div>` +
     `</div>` +
-    `<div class="tool-ui-body"></div>`;
+    `<div class="tool-ui-body bubble"></div>`;
   chatEl.appendChild(wrapper);
-  chatEl.scrollTop = chatEl.scrollHeight;
+  // O widget é montado no container SÓ depois (dentro do handler). Rola após a montagem +
+  // layout (duplo rAF) para mostrar o widget inteiro, não a altura antiga.
+  requestAnimationFrame(() => requestAnimationFrame(scrollChatToBottom));
   return wrapper.querySelector(".tool-ui-body");
+}
+
+function scrollChatToBottom() {
+  chatEl.scrollTop = chatEl.scrollHeight;
 }
 
 // Roda o agente anunciando as frontend tools e, sempre que ele chamar uma delas,
@@ -132,11 +144,12 @@ async function runWithFrontendTools(params) {
       let content;
       try {
         setStatus("waiting");
-        const container = createToolUiBlock(name);
+        const container = createToolUiBlock();
         content = await FT_BY_NAME.get(name).handler(args || {}, { container });
       } catch (err) {
         content = "Erro ao executar a ferramenta no navegador: " + (err?.message || err);
       }
+      addUserBubble(summarizeChoice(String(content)));
       agent.addMessage({
         id: crypto.randomUUID(),
         role: "tool",
@@ -196,6 +209,7 @@ let runBubble = null;         // bolha única do run atual (mostra só a mensage
 let runStartTime = null;
 let runTimerInterval = null;
 let currentAction = "pensando";
+let lastRunElapsed = null;    // duração do último run finalizado (rótulo dos blocos pós-run)
 
 function formatElapsed(ms) { return (ms / 1000).toFixed(1) + "s"; }
 
@@ -227,7 +241,13 @@ function setAgentStatus(wrapper, statusClass, label, icon) {
   avatar.className = "avatar" + (statusClass ? " avatar-" + statusClass : "");
   avatar.innerHTML = icon;
   avatar.style.display = icon ? "" : "none";
-  wrapper.querySelector(".who").textContent = label;
+  wrapper.querySelector(".who").innerHTML = label;
+}
+
+// Rótulo do agente com o tempo de processamento em estilo muted e fonte menor.
+// "Agent" normal + "(1.8s)" muted.
+function agentLabelHTML(total) {
+  return `Agent <span class="who-time">(${escapeHtml(total)})</span>`;
 }
 
 function getAssistantBubble(messageId) {
@@ -267,6 +287,25 @@ function logEvent(event) {
 
 function escapeHtml(s) {
   return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+}
+
+// Extrai um texto legível do resultado de uma frontend tool (JSON ou string).
+// Ex.: '{"value":"Ver cardápio"}' → "Ver cardápio", '"O usuário confirmou."' → "Confirmado".
+function summarizeChoice(raw) {
+  if (!raw) return "";
+  try {
+    const obj = JSON.parse(raw);
+    if (obj && typeof obj === "object") {
+      for (const k of ["value", "selected", "result", "choice"]) {
+        if (obj[k] != null && obj[k] !== "") {
+          const v = obj[k];
+          return Array.isArray(v) ? v.join(", ") : String(v);
+        }
+      }
+      return Object.values(obj).join(", ") || raw;
+    }
+  } catch {}
+  return raw;
 }
 
 // Chaves que o protocolo AG-UI/LangGraph sempre injeta no STATE_SNAPSHOT
@@ -320,6 +359,66 @@ function renderState(state) {
   }
 }
 
+// Resumo legível e GENÉRICO de um valor (sem shape conhecido). Arrays/objetos preferem
+// campos de nome comuns (mesma convenção genérica de cardList); senão juntam os valores.
+function summarizeValue(v) {
+  if (v == null || v === "") return "";
+  if (Array.isArray(v)) return v.map(summarizeValue).filter(Boolean).join(", ");
+  if (typeof v === "object") {
+    for (const k of ["name", "title", "label", "id", "value"]) {
+      if (v[k] != null && v[k] !== "") return summarizeValue(v[k]);
+    }
+    return Object.values(v).map(summarizeValue).filter(Boolean).join(", ");
+  }
+  return String(v);
+}
+
+// Formatação GENÉRICA de texto de chip: data ISO (YYYY-MM-DD) vira DD/MM; resto passa direto.
+function prettyTagText(text) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  return m ? `${m[3]}/${m[2]}` : text;
+}
+
+// Tira de chips (acima do input) com as "escolhas feitas" do estado compartilhado.
+// GENÉRICA: itera as chaves não-protocolares; um objeto plano vira um chip por subcampo;
+// arrays/escalares viram um chip. O ÍCONE por chave vem de STATE_TAG_ICONS (único ponto de
+// domínio); sem ícone, mostra o rótulo humanizado. Sem conhecer o domínio aqui.
+function renderStateTags(state) {
+  const chips = []; // [key, text]
+  const keys = state && typeof state === "object"
+    ? Object.keys(state).filter((k) => !PROTOCOL_STATE_KEYS.has(k))
+    : [];
+  for (const k of keys) {
+    const v = state[k];
+    if (v == null || v === "" || (Array.isArray(v) && v.length === 0)) continue;
+    if (!Array.isArray(v) && typeof v === "object") {
+      for (const [sk, sv] of Object.entries(v)) {
+        const text = summarizeValue(sv);
+        if (text) chips.push([sk, text]);
+      }
+    } else {
+      const text = summarizeValue(v);
+      if (text) chips.push([k, text]);
+    }
+  }
+  stateTagsEl.innerHTML = "";
+  if (chips.length === 0) {
+    stateTagsEl.hidden = true;
+    return;
+  }
+  for (const [key, text] of chips) {
+    const tag = document.createElement("span");
+    tag.className = "state-tag";
+    const icon = STATE_TAG_ICONS[key];
+    const lead = icon
+      ? `<span class="state-tag-icon">${escapeHtml(icon)}</span>`
+      : `<span class="state-tag-key">${escapeHtml(humanizeLabel(key))}</span>`;
+    tag.innerHTML = lead + escapeHtml(prettyTagText(text));
+    stateTagsEl.appendChild(tag);
+  }
+  stateTagsEl.hidden = false;
+}
+
 // Preenche o campo de argumentos de um tool card a partir de um valor cru
 // (string JSON, objeto ou nulo). Mantém oculto quando não há argumentos ({}).
 function setToolArgs(t, raw) {
@@ -352,8 +451,9 @@ const subscriber = {
   onEvent: ({ event }) => logEvent(event),
 
   // Lifecycle
-  onStepStartedEvent: ({ event }) => {
-    currentAction = event.stepName || "trabalhando";
+  onStepStartedEvent: () => {
+    // Atividade genérica e legível no chat — o nome cru do step fica só no log de eventos.
+    currentAction = "trabalhando";
   },
   onRunStartedEvent: () => {
     setStatus("running");
@@ -371,8 +471,9 @@ const subscriber = {
     clearInterval(runTimerInterval);
     runTimerInterval = null;
     const total = formatElapsed(Date.now() - runStartTime);
+    lastRunElapsed = total;
     runStartTime = null;
-    if (runBubble) setAgentStatus(runBubble.wrapper, "", "Agent (" + total + ")", "");
+    if (runBubble) setAgentStatus(runBubble.wrapper, "", agentLabelHTML(total), "");
     if (pendingAgentBlock) {
       // Run sem texto (ex.: só tool calls): descarta o spinner pendente.
       pendingAgentBlock.wrapper.remove();
@@ -442,7 +543,8 @@ const subscriber = {
 
   // Tool calls
   onToolCallStartEvent: ({ event }) => {
-    currentAction = event.toolCallName || "usando ferramenta";
+    // Atividade genérica no chat; o nome cru da tool fica no card lateral + log.
+    currentAction = "usando ferramenta";
     // Dedup: durante o resume de HITL o backend reemite TOOL_CALL_START para o
     // mesmo tool_call_id (nova instância do agente com streamed_tool_call_ids vazio).
     // O card existente receberá o resultado quando TOOL_CALL_RESULT chegar.

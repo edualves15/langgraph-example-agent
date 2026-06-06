@@ -125,12 +125,13 @@ def get_available_times(date_iso: str) -> str:
 
 @tool
 def create_reservation(
+    tool_call_id: Annotated[str, InjectedToolCallId],
     customer_name: str,
     date_iso: str,
     time: str,
     party_size: int,
     item_ids: list[str],
-) -> str:
+) -> Command | str:
     """Create a table reservation. Requires human approval before confirming (HITL).
 
     Use this tool only after the user has chosen a date, a time, the party size and
@@ -174,8 +175,19 @@ def create_reservation(
 
     if approved:
         extra = f" Pratos: {', '.join(dishes)}." if dishes else ""
-        return (
+        confirmation = (
             f"Reserva confirmada para {customer_name} em {date_iso} às {time}, "
             f"{party_size} pessoa(s).{extra}"
         )
+        # Reserva concluída → zera o rascunho compartilhado para a PRÓXIMA reserva começar
+        # limpa (o painel de estado zera via STATE_SNAPSHOT/DELTA). Reducer default
+        # (overwrite), então `[]`/`{}` limpam `order`/`reservation`.
+        return Command(
+            update={
+                "order": [],
+                "reservation": {},
+                "messages": [ToolMessage(content=confirmation, tool_call_id=tool_call_id)],
+            }
+        )
+    # Rejeitado: mantém o rascunho para o usuário ajustar (sem mexer no estado).
     return f"Reserva cancelada pelo usuário. Nada foi reservado para {customer_name}."

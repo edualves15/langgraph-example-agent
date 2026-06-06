@@ -39,14 +39,13 @@ function finish(root, resolveBtn) {
  * Lista de opções com checkboxes (multiple) ou radios (single) + botão confirmar.
  * Resolve com um array das opções (strings) selecionadas.
  */
-export function optionList(container, { title, options, multiple = true }) {
+export function optionList(container, { options, multiple = true }) {
   return new Promise((resolve) => {
     const root = document.createElement("div");
     root.className = "uic uic-options";
     const type = multiple ? "checkbox" : "radio";
     const name = "opt-" + Math.random().toString(36).slice(2);
     root.innerHTML =
-      (title ? `<div class="uic-title">${escapeHtml(title)}</div>` : "") +
       `<div class="uic-list">` +
       (options || [])
         .map(
@@ -55,7 +54,7 @@ export function optionList(container, { title, options, multiple = true }) {
         )
         .join("") +
       `</div>` +
-      `<button type="button" class="uic-confirm">Confirmar</button>`;
+      `<button type="button" class="uic-btn uic-btn--primary uic-confirm">Confirmar</button>`;
 
     const btn = root.querySelector(".uic-confirm");
     btn.addEventListener("click", () => {
@@ -75,12 +74,11 @@ export function optionList(container, { title, options, multiple = true }) {
  * Lista de cards selecionáveis ({ id, title, description, price }) + confirmar.
  * Resolve com um array dos `id`s selecionados.
  */
-export function cardList(container, { title, cards, multiple = true, currency }) {
+export function cardList(container, { cards, multiple = true, currency }) {
   return new Promise((resolve) => {
     const root = document.createElement("div");
     root.className = "uic uic-cards";
     root.innerHTML =
-      (title ? `<div class="uic-title">${escapeHtml(title)}</div>` : "") +
       `<div class="uic-card-grid">` +
       (cards || [])
         .map(
@@ -93,7 +91,7 @@ export function cardList(container, { title, cards, multiple = true, currency })
         )
         .join("") +
       `</div>` +
-      `<button type="button" class="uic-confirm">Confirmar</button>`;
+      `<button type="button" class="uic-btn uic-btn--primary uic-confirm">Confirmar</button>`;
 
     const selected = new Set();
     root.querySelectorAll(".uic-card").forEach((card) => {
@@ -123,19 +121,110 @@ export function cardList(container, { title, cards, multiple = true, currency })
   });
 }
 
+// Variantes visuais permitidas para os botões de resposta rápida. Saneadas contra
+// esta whitelist (valor desconhecido/ausente → "neutral"): evita injeção de classe e
+// mantém o widget genérico/flat.
+const BUTTON_KINDS = ["primary", "neutral", "danger", "success"];
+
+/**
+ * Linha de botões de resposta rápida. Cada botão = { label, value, kind }.
+ * Clicar resolve IMEDIATAMENTE (sem etapa de confirmar) com `value ?? label`.
+ * `kind` ∈ {primary, neutral, danger, success} → classe .uic-btn--<kind> (default neutral;
+ * use primary só no botão de ação principal).
+ */
+export function buttonGroup(container, { buttons }) {
+  return new Promise((resolve) => {
+    const root = document.createElement("div");
+    root.className = "uic uic-buttons";
+    root.innerHTML =
+      `<div class="uic-btn-row">` +
+      (buttons || [])
+        .map((b) => {
+          const label = b.label ?? b.title ?? b.value ?? "";
+          const kind = BUTTON_KINDS.includes(b.kind) ? b.kind : "neutral";
+          const value = b.value ?? label;
+          return (
+            `<button type="button" class="uic-btn uic-btn--${kind}" ` +
+            `data-value="${escapeHtml(value)}">${escapeHtml(label)}</button>`
+          );
+        })
+        .join("") +
+      `</div>`;
+
+    root.querySelectorAll(".uic-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        finish(root, null);
+        btn.classList.add("chosen");
+        resolve(btn.dataset.value);
+      });
+    });
+
+    container.appendChild(root);
+  });
+}
+
+/**
+ * Seletor de número (stepper −/+ com botão Confirmar). Resolve com o número escolhido
+ * (string, p/ o ToolMessage). Opções: { title, min=1, max, step=1, value }.
+ * − / + e o input respeitam [min, max] e alinham ao `step`; input editável pelo teclado.
+ */
+export function numberStepper(container, { min = 1, max, step = 1, value } = {}) {
+  return new Promise((resolve) => {
+    const lo = Number.isFinite(min) ? min : 1;
+    const hi = Number.isFinite(max) ? max : null;
+    const st = Number.isFinite(step) && step > 0 ? step : 1;
+    const clamp = (n) => {
+      if (!Number.isFinite(n)) return lo;
+      n = Math.round((n - lo) / st) * st + lo; // alinha à grade do step
+      if (n < lo) n = lo;
+      if (hi != null && n > hi) n = hi;
+      return n;
+    };
+    let val = clamp(Number.isFinite(value) ? value : lo);
+
+    const root = document.createElement("div");
+    root.className = "uic uic-stepper-wrap";
+    root.innerHTML =
+      `<div class="uic-stepper">` +
+        `<button type="button" class="uic-step" data-d="-1" aria-label="Diminuir">−</button>` +
+        `<input class="uic-step-val" type="number" inputmode="numeric" value="${val}">` +
+        `<button type="button" class="uic-step" data-d="1" aria-label="Aumentar">+</button>` +
+      `</div>` +
+      `<button type="button" class="uic-btn uic-btn--primary uic-confirm">Confirmar</button>`;
+
+    const input = root.querySelector(".uic-step-val");
+    const sync = () => { input.value = String(val); };
+    root.querySelectorAll(".uic-step").forEach((b) => {
+      b.addEventListener("click", () => {
+        val = clamp(Number(input.value) + st * Number(b.dataset.d));
+        sync();
+      });
+    });
+    input.addEventListener("blur", () => { val = clamp(Number(input.value)); sync(); });
+
+    const confirm = root.querySelector(".uic-confirm");
+    confirm.addEventListener("click", () => {
+      val = clamp(Number(input.value));
+      finish(root, confirm);
+      resolve(String(val));
+    });
+
+    container.appendChild(root);
+  });
+}
+
 /**
  * Dialog inline de confirmação (Sim/Não). Resolve com booleano.
+ * Só os botões — a pergunta vem da resposta do agente.
  */
-export function confirmDialog(container, { title, message }) {
+export function confirmDialog(container) {
   return new Promise((resolve) => {
     const root = document.createElement("div");
     root.className = "uic uic-dialog";
     root.innerHTML =
-      (title ? `<div class="uic-title">${escapeHtml(title)}</div>` : "") +
-      (message ? `<div class="uic-msg">${escapeHtml(message)}</div>` : "") +
       `<div class="uic-actions">` +
-      `<button type="button" class="uic-yes">Sim</button>` +
-      `<button type="button" class="uic-no">Não</button>` +
+      `<button type="button" class="uic-btn uic-btn--primary uic-yes">Sim</button>` +
+      `<button type="button" class="uic-btn uic-btn--neutral uic-no">Não</button>` +
       `</div>`;
 
     const done = (value) => {

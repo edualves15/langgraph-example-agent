@@ -36,15 +36,19 @@ def test_update_reservation_partial_merge():
 
 
 def test_create_reservation_hitl(monkeypatch):
-    # Aprovado.
+    # Aprovado → Command que limpa o rascunho e confirma via ToolMessage.
     monkeypatch.setattr(r, "interrupt", lambda payload: True)
     out = r.create_reservation.func(
+        tool_call_id="c1",
         customer_name="Ana", date_iso="2026-07-01", time="19:30", party_size=2, item_ids=["risoto"]
     )
-    assert "confirmada" in out.lower()
-    # Recusado.
+    assert out.update["order"] == []
+    assert out.update["reservation"] == {}
+    assert "confirmada" in out.update["messages"][0].content.lower()
+    # Recusado → string, rascunho preservado (sem update de estado).
     monkeypatch.setattr(r, "interrupt", lambda payload: False)
     out2 = r.create_reservation.func(
+        tool_call_id="c2",
         customer_name="Ana", date_iso="2026-07-01", time="19:30", party_size=2, item_ids=[]
     )
     assert "cancelada" in out2.lower()

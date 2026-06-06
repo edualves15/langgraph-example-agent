@@ -12,7 +12,9 @@
   --danger: #ff7b72;
   --user: #1d3a5e;
   --assistant: #16202f;
-  --mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+  --mono:
+    "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", Consolas,
+    monospace;
 
   /* Superfícies sólidas (design flat — sem degradê/sombra/transparência) */
   --surface: #1a2234;
@@ -99,9 +101,17 @@ body {
 }
 
 /* ── Utilitários ── */
-.icon { display: inline-flex; align-items: center; color: inherit; }
-.icon svg { display: block; }
-.mono { font-family: var(--mono); }
+.icon {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+}
+.icon svg {
+  display: block;
+}
+.mono {
+  font-family: var(--mono);
+}
 .pre-block {
   margin: 0;
   padding: 8px 10px;
@@ -120,7 +130,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 0 -14px -14px;   /* compensa padding do .tab-content */
+  margin: 0 -14px -14px; /* compensa padding do .tab-content */
   padding: 8px 14px;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
@@ -207,8 +217,9 @@ body {
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(380px, 30%); /* lateral ~30% */
+  grid-template-columns: minmax(0, 960px) minmax(380px, 480px);
   gap: 16px;
+  justify-content: center;
   padding: 16px;
   flex: 1 1 auto; /* ocupa a altura restante após a topbar */
   min-height: 0; /* permite que os filhos roláveis encolham */
@@ -243,7 +254,9 @@ body {
 .panel-head .ghost {
   margin-left: auto;
 }
-.panel-head-icon { color: var(--muted); }
+.panel-head-icon {
+  color: var(--muted);
+}
 .panel-body {
   padding: 12px 14px;
   overflow-y: auto;
@@ -252,72 +265,131 @@ body {
 /* Componentes interativos de frontend (web/ui-components.js), renderizados inline
    no chat por tools de frontend (present_cards / present_options / confirm_dialog).
    Estilo flat: cores sólidas, hairlines sólidas, sem degradê/sombra/transparência. */
+/* Widget inline = PUROS CONTROLES (sem título/mensagem): a pergunta vem da resposta do
+   agente. Renderizado dentro de uma `.bubble` (herda a tipografia do balão); aqui só o
+   layout em coluna dos controles. */
 .uic {
-  border: 1px solid var(--border);
-  background: var(--panel);
-  border-radius: var(--radius-lg);
-  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   animation: msg-in 0.28s ease;
 }
-.uic-title {
-  font-weight: 700;
-  font-size: var(--fs-lg);
-  letter-spacing: -0.01em;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.uic.uic-done .uic-confirm {
+  display: none;
 }
-.uic-title::before {
-  content: "";
-  width: 4px;
-  height: 15px;
-  border-radius: 2px;
-  background: var(--accent);
+/* Após concluído: congela a interação (labels de opção não são <button>, então o
+   cursor/hover precisam ser neutralizados à mão). */
+.uic.uic-done .uic-opt,
+.uic.uic-done .uic-card {
+  cursor: default;
 }
-.uic.uic-done {
-  border-color: var(--border);
+.uic.uic-done .uic-opt:hover {
+  background: transparent;
 }
-.uic.uic-done .uic-confirm { display: none; }
+/* Opções = CONTROLES (não botões): lista vertical compacta, cada linha do tamanho do
+   conteúdo, alinhada à esquerda. */
 .uic-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  align-items: flex-start;
+  gap: 2px;
 }
 .uic-opt {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   cursor: pointer;
-  padding: 9px 11px;
-  border: 1px solid var(--border);
+  padding: 6px 8px;
   border-radius: var(--radius-sm);
-  background: var(--surface);
-  transition: border-color 0.12s, background 0.12s;
+  color: var(--text);
+  transition:
+    background 0.12s,
+    color 0.12s;
 }
-.uic-opt:hover { background: var(--surface-hover); }
+.uic-opt:hover {
+  background: var(--surface-hover);
+}
 .uic-opt:has(input:checked) {
-  border-color: var(--accent);
-  background: var(--surface-sel);
+  color: var(--accent);
 }
+/* Controle custom desenhado a partir do input nativo (acessível): radio = ponto,
+   checkbox = ✓. Visualmente distinto de um botão. */
 .uic-opt input {
-  accent-color: var(--accent);
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  width: 17px;
+  height: 17px;
   flex: 0 0 auto;
+  border: 1.5px solid var(--scroll-hover);
+  background: var(--panel-2);
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
 }
-.uic-opt input:disabled,
+.uic-opt input[type="radio"] {
+  border-radius: 50%;
+}
+.uic-opt input[type="checkbox"] {
+  border-radius: var(--radius-sm);
+}
+.uic-opt input:hover {
+  border-color: var(--accent);
+}
+.uic-opt input::before {
+  content: "";
+  transform: scale(0);
+  transition: transform 0.12s;
+}
+.uic-opt input[type="radio"]::before {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.uic-opt input[type="checkbox"]::before {
+  content: "✓";
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent);
+}
+.uic-opt input:checked {
+  border-color: var(--accent);
+}
+.uic-opt input:checked::before {
+  transform: scale(1);
+}
+.uic-opt input:disabled {
+  cursor: default;
+}
 .uic-card:disabled,
 .uic-confirm:disabled,
 .uic-actions button:disabled {
   cursor: default;
 }
+/* Itens não-selecionados ficam muted após a escolha (widget concluído). */
+.uic-card:disabled {
+  opacity: 0.45;
+}
+.uic-card.sel:disabled {
+  opacity: 1;
+}
+.uic.uic-done .uic-opt:not(:has(input:checked)) {
+  opacity: 0.45;
+}
+.uic-stepper input:disabled {
+  opacity: 0.45;
+}
+/* Cards: largura limitada, empacotados à esquerda (não esticam em tela larga); no
+   estreito caem para 1 coluna sem overflow (min(...,100%)). */
 .uic-card-grid {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 240px));
+  justify-content: start;
   gap: 8px;
 }
 .uic-card {
@@ -332,9 +404,13 @@ body {
   background: var(--surface);
   color: var(--text);
   cursor: pointer;
-  transition: border-color 0.12s, background 0.12s;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
 }
-.uic-card:hover { background: var(--surface-hover); }
+.uic-card:hover {
+  background: var(--surface-hover);
+}
 .uic-card.sel {
   border-color: var(--accent);
   background: var(--surface-sel);
@@ -356,8 +432,15 @@ body {
   background: var(--accent);
   border-radius: 50%;
 }
-.uic-card-title { font-weight: 700; letter-spacing: -0.01em; }
-.uic-card-desc { color: var(--muted); font-size: var(--fs-sm); line-height: 1.45; }
+.uic-card-title {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.uic-card-desc {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
 .uic-card-price {
   align-self: flex-start;
   margin-top: 2px;
@@ -369,33 +452,184 @@ body {
   border-radius: var(--radius-pill);
   background: var(--price-bg);
 }
-.uic-msg { color: var(--text); line-height: 1.55; }
-.uic-actions { display: flex; gap: 10px; }
-.uic-confirm,
-.uic-actions button {
-  align-self: flex-start;
-  padding: 9px 18px;
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-sm);
-  background: var(--accent);
-  color: var(--on-accent);
-  font-family: inherit;
-  font-weight: 700;
-  font-size: var(--fs-md);
-  cursor: pointer;
-  transition: background 0.12s, border-color 0.12s, color 0.12s;
+.uic-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
-.uic-confirm:hover,
-.uic-actions button:hover { background: var(--accent-press); border-color: var(--accent-press); }
-.uic-confirm:focus-visible,
-.uic-actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.uic-actions .uic-no {
+/* Botão canônico de TODOS os widgets (confirmar, Sim/Não, respostas rápidas).
+   Base SUTIL (superfície + hairline); os kinds só adicionam ênfase. Flat: sólido,
+   sem sombra/degradê. Linha de respostas rápidas: .uic-btn-row. */
+.uic-btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.uic-btn {
+  align-self: flex-start;
+  padding: 9px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text);
+  font-family: inherit;
+  font-weight: 600;
+  font-size: var(--fs-md);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    border-color 0.12s,
+    color 0.12s,
+    opacity 0.12s;
+}
+.uic-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--scroll-hover);
+}
+.uic-btn:active {
+  background: var(--surface-sel);
+}
+.uic-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Kind primary — o ÚNICO botão de destaque (ação principal): preenchido accent. */
+.uic-btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+}
+.uic-btn--primary:hover {
+  background: var(--accent-press);
+  border-color: var(--accent-press);
+}
+.uic-btn--primary:active {
+  background: var(--accent-press);
+}
+/* Kinds danger / success — ênfase por cor de borda+texto sobre a base sutil. */
+.uic-btn--danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.uic-btn--danger:hover {
+  background: var(--surface-hover);
+  border-color: var(--danger);
+}
+.uic-btn--success {
+  color: var(--accent-2);
+  border-color: var(--accent-2);
+}
+.uic-btn--success:hover {
+  background: var(--surface-hover);
+  border-color: var(--accent-2);
+}
+/* Estados terminais — bem distintos entre si. */
+.uic-btn:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.uic-btn:disabled:hover {
+  background: var(--surface);
   border-color: var(--border);
 }
-.uic-actions .uic-no:hover { background: var(--surface); border-color: var(--danger); color: var(--danger); }
-.uic-actions button.chosen { outline: 2px solid var(--accent); outline-offset: 2px; }
+.uic-btn--primary:disabled:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.uic-btn.chosen,
+.uic-btn.chosen:hover {
+  opacity: 1;
+  background: var(--surface-sel);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+/* ✓ padronizado: mesmo badge circular accent usado em .uic-card.sel. */
+.uic-btn.chosen::after {
+  content: "✓";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+/* Numa linha de respostas rápidas: do tamanho do conteúdo, à esquerda, quebrando
+   linha quando não cabem (não esticam para preencher a largura). */
+.uic-btn-row {
+  justify-content: flex-start;
+}
+.uic-btn-row .uic-btn {
+  flex: 0 1 auto;
+  align-self: auto;
+}
+/* Seletor de número (numberStepper): − [valor] +, à esquerda. */
+.uic-stepper {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 6px;
+}
+.uic-step {
+  width: 38px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+}
+.uic-step:hover {
+  background: var(--surface-hover);
+  border-color: var(--scroll-hover);
+}
+.uic-step:active {
+  background: var(--surface-sel);
+}
+.uic-step:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.uic-step:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.uic-stepper input {
+  width: 64px;
+  text-align: center;
+  padding: 8px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+.uic-stepper input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+/* Esconde as setas nativas do input number (consistência visual). */
+.uic-stepper input::-webkit-outer-spin-button,
+.uic-stepper input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.uic-stepper input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
 .avatar-tool {
   color: var(--accent);
   width: 24px;
@@ -417,6 +651,7 @@ body {
 /* Chat */
 .chat-panel {
   min-height: 0;
+  max-width: 960px;
 }
 .chat {
   flex: 1;
@@ -424,7 +659,7 @@ body {
   padding: 20px 18px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 28px;
 }
 
 /* ── Empty state — input centralizado ── */
@@ -471,7 +706,9 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
 }
-.empty-prompt-icon svg { margin: 0; }
+.empty-prompt-icon svg {
+  margin: 0;
+}
 .empty-prompt h2 {
   font-size: var(--fs-2xl);
   font-weight: 800;
@@ -575,6 +812,11 @@ body {
   color: var(--muted);
   letter-spacing: 0.2px;
 }
+.msg-header .who .who-time {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 400;
+}
 
 /* ── Balão ── */
 .msg-wrapper.user .bubble {
@@ -601,51 +843,171 @@ body {
 }
 
 /* ── Markdown (compartilhado entre user e assistant) ── */
-.msg-wrapper .bubble p { margin: 0 0 0.75em; }
-.msg-wrapper .bubble p:last-child { margin-bottom: 0; }
-.msg-wrapper .bubble strong { font-weight: 700; }
-.msg-wrapper .bubble em { font-style: italic; }
+.msg-wrapper .bubble p {
+  margin: 0 0 0.75em;
+}
+.msg-wrapper .bubble p:last-child {
+  margin-bottom: 0;
+}
+.msg-wrapper .bubble strong {
+  font-weight: 700;
+}
+.msg-wrapper .bubble em {
+  font-style: italic;
+}
 .msg-wrapper .bubble ul,
-.msg-wrapper .bubble ol { margin: 0.5em 0; padding-left: 1.6em; }
-.msg-wrapper .bubble li { margin-bottom: 0.3em; }
+.msg-wrapper .bubble ol {
+  margin: 0.5em 0;
+  padding-left: 1.6em;
+}
+.msg-wrapper .bubble li {
+  margin-bottom: 0.3em;
+}
 .msg-wrapper .bubble li > ul,
-.msg-wrapper .bubble li > ol { margin: 0.2em 0; }
-.msg-wrapper .bubble li > p { margin: 0 0 0.4em; }
-.msg-wrapper .bubble hr { border: none; border-top: 1px solid var(--border); margin: 1.25em 0; }
-.msg-wrapper .bubble blockquote { margin: 0.75em 0; padding: 6px 12px; border-left: 3px solid var(--accent); font-style: italic; }
-.msg-wrapper .bubble blockquote p { margin: 0.3em 0; }
+.msg-wrapper .bubble li > ol {
+  margin: 0.2em 0;
+}
+.msg-wrapper .bubble li > p {
+  margin: 0 0 0.4em;
+}
+.msg-wrapper .bubble hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.25em 0;
+}
+.msg-wrapper .bubble blockquote {
+  margin: 0.75em 0;
+  padding: 6px 12px;
+  border-left: 3px solid var(--accent);
+  font-style: italic;
+}
+.msg-wrapper .bubble blockquote p {
+  margin: 0.3em 0;
+}
 .msg-wrapper .bubble del,
-.msg-wrapper .bubble s { text-decoration: line-through; opacity: 0.7; }
-.msg-wrapper .bubble a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
-.msg-wrapper .bubble a:hover { color: var(--accent-press); }
-.msg-wrapper .bubble img { max-width: 100%; height: auto; border-radius: 6px; margin: 0.5em 0; }
-.msg-wrapper .bubble h1 { font-size: 1.25em; font-weight: 700; margin: 1.8em 0 0.4em; }
-.msg-wrapper .bubble h2 { font-size: 1.1em; font-weight: 700; margin: 1.8em 0 0.35em; }
-.msg-wrapper .bubble h3 { font-size: 1.05em; font-weight: 700; margin: 1.55em 0 0.3em; }
-.msg-wrapper .bubble h4 { font-size: 1em; font-weight: 700; margin: 1.3em 0 0.25em; }
-.msg-wrapper .bubble h5 { font-size: 0.95em; font-weight: 700; margin: 1.2em 0 0.25em; }
-.msg-wrapper .bubble h6 { font-size: 0.9em; font-weight: 700; margin: 1.1em 0 0.25em; }
-.msg-wrapper .bubble :is(h1, h2, h3, h4, h5, h6):first-child { margin-top: 0; }
-.msg-wrapper .bubble code { font-family: var(--mono); font-size: 0.9em; border-radius: 4px; padding: 1px 5px; }
-.msg-wrapper .bubble pre { margin: 0.75em 0; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; overflow-x: auto; }
-.msg-wrapper .bubble pre code { background: none; border: none; padding: 0; font-size: 0.88em; }
-.msg-wrapper .bubble table { border-collapse: collapse; margin: 0.75em 0; max-width: 100%; display: block; overflow-x: auto; font-size: 0.95em; }
+.msg-wrapper .bubble s {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+.msg-wrapper .bubble a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.msg-wrapper .bubble a:hover {
+  color: var(--accent-press);
+}
+.msg-wrapper .bubble img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 0.5em 0;
+}
+.msg-wrapper .bubble h1 {
+  font-size: 1.25em;
+  font-weight: 700;
+  margin: 1.8em 0 0.4em;
+}
+.msg-wrapper .bubble h2 {
+  font-size: 1.1em;
+  font-weight: 700;
+  margin: 1.8em 0 0.35em;
+}
+.msg-wrapper .bubble h3 {
+  font-size: 1.05em;
+  font-weight: 700;
+  margin: 1.55em 0 0.3em;
+}
+.msg-wrapper .bubble h4 {
+  font-size: 1em;
+  font-weight: 700;
+  margin: 1.3em 0 0.25em;
+}
+.msg-wrapper .bubble h5 {
+  font-size: 0.95em;
+  font-weight: 700;
+  margin: 1.2em 0 0.25em;
+}
+.msg-wrapper .bubble h6 {
+  font-size: 0.9em;
+  font-weight: 700;
+  margin: 1.1em 0 0.25em;
+}
+.msg-wrapper .bubble :is(h1, h2, h3, h4, h5, h6):first-child {
+  margin-top: 0;
+}
+.msg-wrapper .bubble code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.msg-wrapper .bubble pre {
+  margin: 0.75em 0;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.msg-wrapper .bubble pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.88em;
+}
+.msg-wrapper .bubble table {
+  border-collapse: collapse;
+  margin: 0.75em 0;
+  max-width: 100%;
+  display: block;
+  overflow-x: auto;
+  font-size: 0.95em;
+}
 .msg-wrapper .bubble th,
-.msg-wrapper .bubble td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
-.msg-wrapper .bubble thead th { background: var(--panel-2); font-weight: 700; }
-.msg-wrapper .bubble tbody tr:nth-child(even) { background: var(--panel-2); }
+.msg-wrapper .bubble td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+}
+.msg-wrapper .bubble thead th {
+  background: var(--panel-2);
+  font-weight: 700;
+}
+.msg-wrapper .bubble tbody tr:nth-child(even) {
+  background: var(--panel-2);
+}
 
 /* Específicos do balão do usuário (fundo azul) */
-.msg-wrapper.user .bubble strong { color: #fff; }
-.msg-wrapper.user .bubble h6 { color: #aebfd6; }
-.msg-wrapper.user .bubble blockquote { color: #c7d6ea; border-left-color: #4a6f9c; }
-.msg-wrapper.user .bubble code { background: #14304f; border: 1px solid var(--user-border); }
+.msg-wrapper.user .bubble strong {
+  color: #fff;
+}
+.msg-wrapper.user .bubble h6 {
+  color: #aebfd6;
+}
+.msg-wrapper.user .bubble blockquote {
+  color: #c7d6ea;
+  border-left-color: #4a6f9c;
+}
+.msg-wrapper.user .bubble code {
+  background: #14304f;
+  border: 1px solid var(--user-border);
+}
 
 /* Específicos do balão do assistente */
-.msg-wrapper.assistant .bubble strong { color: var(--text); }
-.msg-wrapper.assistant .bubble h6 { color: var(--muted); }
-.msg-wrapper.assistant .bubble blockquote { color: var(--muted); }
-.msg-wrapper.assistant .bubble code { background: var(--panel-2); border: 1px solid var(--border); }
+.msg-wrapper.assistant .bubble strong {
+  color: var(--text);
+}
+.msg-wrapper.assistant .bubble h6 {
+  color: var(--muted);
+}
+.msg-wrapper.assistant .bubble blockquote {
+  color: var(--muted);
+}
+.msg-wrapper.assistant .bubble code {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+}
 
 /* Streaming cursor */
 .blink::after {
@@ -658,6 +1020,36 @@ body {
   50% {
     opacity: 0;
   }
+}
+
+/* Tira de "escolhas feitas" (estado compartilhado) acima do input. Chips read-only. */
+.state-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 16px 0;
+}
+.state-tags[hidden] {
+  display: none;
+}
+.state-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: var(--fs-sm);
+}
+.state-tag-icon {
+  font-size: var(--fs-md);
+  line-height: 1;
+}
+.state-tag-key {
+  color: var(--muted);
+  font-weight: 600;
 }
 
 .suggestions {
@@ -679,7 +1071,9 @@ body {
   padding: 7px 14px;
   font-size: var(--fs-sm);
   cursor: pointer;
-  transition: border-color 0.12s, background 0.12s;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
 }
 .suggestions button:hover {
   border-color: var(--accent);
@@ -739,7 +1133,9 @@ body {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background 0.12s, opacity 0.15s;
+  transition:
+    background 0.12s,
+    opacity 0.15s;
 }
 .composer-wrap button:hover:not(:disabled) {
   background: var(--accent-press);
@@ -748,7 +1144,6 @@ body {
   opacity: 0.45;
   cursor: not-allowed;
 }
-
 
 .approval button {
   border: none;
@@ -762,8 +1157,13 @@ body {
   font-size: var(--fs-lg);
   transition: filter 0.12s;
 }
-.approval button:hover { filter: brightness(1.08); }
-.approval button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.approval button:hover {
+  filter: brightness(1.08);
+}
+.approval button:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
 
 /* Side (painel de debug com abas) */
 .side {
@@ -848,7 +1248,7 @@ body {
 
 /* Aba de eventos: barra fixa na base, log com scroll acima. */
 .tab-content[data-tab="events"] {
-  display: none;           /* sobrescrito por .active abaixo */
+  display: none; /* sobrescrito por .active abaixo */
   flex-direction: column;
 }
 .tab-content[data-tab="events"].active {
@@ -859,14 +1259,23 @@ body {
   min-height: 0;
   overflow-y: auto;
 }
-.events-bar { margin-top: 10px; }
-.events-bar small { color: var(--muted); font-size: var(--fs-xs); }
+.events-bar {
+  margin-top: 10px;
+}
+.events-bar small {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
 .events-actions {
   display: flex;
   align-items: center;
   gap: 4px;
 }
-.ghost.icon-only { padding: 3px 6px; line-height: 0; justify-content: center; }
+.ghost.icon-only {
+  padding: 3px 6px;
+  line-height: 0;
+  justify-content: center;
+}
 /* Checkbox "detalhes" — fundo integrado ao tema escuro. */
 .toggle-detail {
   display: inline-flex;
@@ -1117,8 +1526,12 @@ body {
   animation: pop-in 0.18s ease;
 }
 @keyframes pop-in {
-  from { transform: translateY(8px) scale(0.98); }
-  to { transform: translateY(0) scale(1); }
+  from {
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    transform: translateY(0) scale(1);
+  }
 }
 .approval-icon {
   color: var(--accent);
@@ -1132,8 +1545,13 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
 }
-.approval-icon svg { margin: 0 auto; }
-.approval-card h3 { font-weight: 700; letter-spacing: -0.01em; }
+.approval-icon svg {
+  margin: 0 auto;
+}
+.approval-card h3 {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
 .approval-card h3 {
   margin: 8px 0;
 }
@@ -1154,7 +1572,9 @@ body {
   background: var(--danger);
   color: var(--on-danger);
 }
-.btn-icon { vertical-align: middle; }
+.btn-icon {
+  vertical-align: middle;
+}
 .approval-hint {
   color: var(--muted);
   font-size: var(--fs-sm);
@@ -1189,7 +1609,9 @@ body {
   padding: 9px 14px;
   border-bottom: 1px solid var(--border);
 }
-.approval-row:last-child { border-bottom: none; }
+.approval-row:last-child {
+  border-bottom: none;
+}
 .approval-row dt {
   flex: 0 0 38%;
   color: var(--muted);

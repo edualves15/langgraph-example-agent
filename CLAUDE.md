@@ -149,16 +149,31 @@ Página estática servida pelo FastAPI, sem build step:
   sugestões**. As tools de frontend (`frontend-tools.js`) e os widgets (`ui-components.js`)
   são **agnósticos de domínio**: `app.js` apenas itera o registry. **O domínio (hoje,
   Restaurante) vive só no BACKEND** + no raciocínio do agente. Se `FRONTEND_TOOLS = []`,
-  `app.js` volta a ser 100% genérico. Consequências (por escolha): rótulos de atividade =
-  `stepName`/`toolCallName` crus; tool cards **sem** badge de origem; **sem** sugestões.
+  `app.js` volta a ser 100% genérico. Consequências (por escolha): tool cards **sem** badge
+  de origem; **sem** sugestões. **No chat**, os rótulos de atividade são genéricos e legíveis
+  (`trabalhando`/`usando ferramenta`; cabeçalho final `Agent (Xs)`) — o nome cru do
+  `stepName`/`toolCallName` fica só na aba "Tool calls" e no log de eventos, não acima das
+  bolhas.
 - `ui-components.js` — toolkit de **widgets genéricos** (sem negócio): `optionList`
-  (checkboxes/radios), `cardList` (cards selecionáveis), `confirmDialog` (Sim/Não). Cada um
-  renderiza num `container` e devolve uma `Promise` que resolve na interação do usuário.
-  Anti-XSS (escapa todo texto). **Sem moeda hardcoded**: `cardList`/`present_cards` aceitam
-  um `currency` (ISO 4217) opcional em runtime para formatar preços; sem ele, o preço é
-  renderizado cru (número ou string passthrough).
+  (checkboxes/radios), `cardList` (cards selecionáveis), `buttonGroup` (botões de resposta
+  rápida — um toque responde, sem confirmar; cada botão `{label, value, kind}`, `kind` ∈
+  primary/neutral/danger/success saneado contra whitelist, **default `neutral`**),
+  `numberStepper` (seletor de número −/+ com confirmar; `{title,min,max,step,value}`, input
+  editável), `confirmDialog` (Sim/Não). Cada um renderiza num `container` e devolve uma
+  `Promise` que resolve na interação do usuário. **Botões unificados**: todos usam a classe
+  canônica `.uic-btn` (+ `--kind`) — base **sutil** (superfície + hairline), só `--primary` é
+  preenchido em accent (a única ação de destaque); estados `disabled`/`chosen` distintos, com
+  **✓ padronizado** (badge circular accent, igual ao de card selecionado). **Opções são
+  CONTROLES, não botões**: lista vertical compacta (largura do conteúdo, à esquerda) com
+  radio (ponto) / checkbox (✓) custom (`appearance:none`). **Layout sem esticar**: cards em
+  grid `auto-fill` com largura limitada empacotado à esquerda; respostas rápidas do tamanho
+  do conteúdo. Anti-XSS (escapa todo texto). **Sem moeda hardcoded**: `cardList`/`present_cards`
+  aceitam um `currency` (ISO 4217) opcional em runtime para formatar preços; sem ele, o preço
+  é renderizado cru (número ou string passthrough).
 - `frontend-tools.js` — **tools de UI genéricas** anunciadas ao agente: `present_cards`,
-  `present_options`, `confirm_dialog` (`{ name, description, parameters, handler }`). O
+  `present_options`, `present_buttons` (botões de resposta rápida de um toque),
+  `present_number` (seletor de número/quantidade), `confirm_dialog`
+  (`{ name, description, parameters, handler }`). O
   `handler(args, { container })` compõe um widget de `ui-components.js`, **aguarda** a
   interação e retorna a string que vira o `ToolMessage`. Renderizadas **inline no chat**.
   Ver https://docs.ag-ui.com/concepts/tools.
@@ -172,14 +187,26 @@ Página estática servida pelo FastAPI, sem build step:
   - **Tools de frontend:** `runWithFrontendTools(params)` envolve `agent.runAgent`,
     **anunciando** `FT_SCHEMAS` (`tools`) em todo run; ao terminar o run, varre as
     mensagens reconstruídas (`latestMessages`, capturadas em `onMessagesChanged` — superfície
-    documentada do subscriber) por chamadas a tools do registry ainda sem `ToolMessage`, cria um
-    **bloco inline no chat** (`createToolUiBlock`), executa o `handler(args,{container})`
+    documentada do subscriber) por chamadas a tools do registry ainda sem `ToolMessage`,
+    cria um **bloco inline no chat** (`createToolUiBlock`), executa o `handler(args,{container})`
     (que **aguarda** a interação do usuário no componente), devolve o resultado via
-    `agent.addMessage({role:"tool",...})` e **roda de novo** até o agente parar de
+    `agent.addMessage({role:"tool",...})` — **roda de novo** até o agente parar de
     chamá-las (fecha o loop ReAct no cliente). Status fica `waiting` enquanto aguarda.
+    - **Widgets = PUROS CONTROLES (fonte única de texto = a resposta do agente).** Os widgets
+      **não** renderizam título/mensagem (removidos dos schemas e do `ui-components.js`); a
+      pergunta/contexto vem só do texto que o agente escreve (reforçado no `system.md` e nas
+      descrições das tools). `createToolUiBlock` **anexa** os controles ao balão da
+      resposta do run (`lastRunElapsed`) → **uma mensagem só** (`Agent (Xs)` + texto +
+      controles); sem preâmbulo, cai no `createToolUiBlock` (bloco próprio com cabeçalho).
   - **Estado genérico:** `renderState(snapshot)` mostra todas as chaves do `STATE_SNAPSHOT`
     **exceto** as protocolares `messages`/`tools` (`PROTOCOL_STATE_KEYS`) — chave→valor,
-    sem conhecer o agente.
+    sem conhecer o agente. `renderStateTags(snapshot)` rende as mesmas chaves como **chips
+    pílula read-only acima do input** (as "escolhas feitas"): objeto plano vira um chip por
+    subcampo, arrays/escalares viram um chip (`summarizeValue` prefere `name/title/label/id`
+    — convenção genérica; datas ISO viram `DD/MM` por heurística genérica). O **ícone por
+    chave** vem de `STATE_TAG_ICONS` (em `frontend-tools.js`, **único ponto de domínio** das
+    tags; chave sem ícone → rótulo humanizado `Rótulo: valor`; `{}` → 100% genérico). Ambos
+    chamados em `applyState()`.
   - **HITL genérico e legível:** o `value` do interrupt (verbatim, app-defined) é
     renderizado de forma **legível** (não técnica) por `showApproval` — texto-guia em
     destaque (`question`/`message`/`description`/`prompt`) + os demais campos como linhas
@@ -228,7 +255,10 @@ tools de **backend** (efeito/dado server-side, executadas no nó `tools`).
 - Human-in-the-loop: chame `interrupt(value)` (`langgraph.types`) dentro da própria
   tool de ação (ver `create_reservation`); a retomada vem por `Command(resume=...)` e o
   front mostra o modal `on_interrupt`. O `value` do interrupt deve ser **legível** (rótulos
-  amigáveis, sem campos técnicos) — o front o renderiza como "Rótulo: valor".
+  amigáveis, sem campos técnicos) — o front o renderiza como "Rótulo: valor". Ao **aprovar**,
+  `create_reservation` retorna `Command(update={"order": [], "reservation": {}, ...})`
+  (precisa de `InjectedToolCallId`) — **zera o rascunho** para a próxima reserva começar
+  limpa; ao **rejeitar**, retorna string (mantém o rascunho para ajuste).
 - Estado compartilhado (agente-owned): uma tool muta o estado retornando
   `Command(update={"<chave>": ..., "messages": [ToolMessage(...)]})` com
   `InjectedState` / `InjectedToolCallId` (emite `STATE_SNAPSHOT`/`STATE_DELTA`; o front o
@@ -243,7 +273,8 @@ tools de **backend** (efeito/dado server-side, executadas no nó `tools`).
   — com Gemini (args inteiros) é no-op visível, sem prejuízo (o estado segue via snapshot).
 - **Tool de frontend** (executada no **navegador**, não no back): NÃO crie `@tool` no
   back. As tools de UI genéricas já existem em `web/frontend-tools.js` (`present_cards`/
-  `present_options`/`confirm_dialog`); o agente as usa passando os dados do domínio. Para
+  `present_options`/`present_buttons`/`confirm_dialog`); o agente as usa passando os dados do
+  domínio. Para
   um novo widget, adicione-o a `web/ui-components.js` e exponha uma tool em
   `frontend-tools.js`. O `app.js` anuncia em runtime e o grafo roteia de volta ao cliente.
 
