@@ -274,6 +274,13 @@ body {
   gap: 10px;
   animation: msg-in 0.28s ease;
 }
+/* Pergunta (arg `message`) renderizada ACIMA dos controles, no mesmo balão. */
+.tool-ui-msg {
+  margin-bottom: 10px;
+}
+.tool-ui-msg > :last-child {
+  margin-bottom: 0;
+}
 .uic.uic-done .uic-confirm {
   display: none;
 }
@@ -381,8 +388,12 @@ body {
 .uic.uic-done .uic-opt:not(:has(input:checked)) {
   opacity: 0.45;
 }
+/* Stepper concluído: o valor escolhido fica LEGÍVEL e destacado (accent); só os −/+
+   é que ficam muted (.uic-step:disabled, abaixo). */
 .uic-stepper input:disabled {
-  opacity: 0.45;
+  opacity: 1;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 /* Cards: largura limitada, empacotados à esquerda (não esticam em tela larga); no
    estreito caem para 1 coluna sem overflow (min(...,100%)). */
@@ -805,11 +816,11 @@ body {
   }
 }
 
-/* Nome */
+/* Nome — legível (var --text); o tempo ao lado fica subordinado (muted + menor). */
 .msg-header .who {
   font-size: var(--fs-sm);
   font-weight: 600;
-  color: var(--muted);
+  color: var(--text);
   letter-spacing: 0.2px;
 }
 .msg-header .who .who-time {

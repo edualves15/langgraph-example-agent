@@ -175,8 +175,11 @@ Página estática servida pelo FastAPI, sem build step:
   `present_number` (seletor de número/quantidade), `confirm_dialog`
   (`{ name, description, parameters, handler }`). O
   `handler(args, { container })` compõe um widget de `ui-components.js`, **aguarda** a
-  interação e retorna a string que vira o `ToolMessage`. Renderizadas **inline no chat**.
-  Ver https://docs.ag-ui.com/concepts/tools.
+  interação e retorna **`{ content, display }`**: `content` vira o `ToolMessage` (vai ao
+  agente); `display` é o texto **amigável** do balão do usuário (rótulos — título do card,
+  label do botão, etc. — não ids/valores crus). Toda tool tem um arg **`message`** (a
+  pergunta), renderizado pelo `app.js` **acima** dos controles, no mesmo balão.
+  Renderizadas **inline no chat**. Ver https://docs.ag-ui.com/concepts/tools.
 - `index.html` — painel de chat + lateral (abas estado/tool calls/eventos). Sem literais do
   agente (slot de sugestões vazio; painel de estado genérico). Os componentes interativos
   são montados inline no chat (não há painel lateral de frontend tools).
@@ -188,16 +191,18 @@ Página estática servida pelo FastAPI, sem build step:
     **anunciando** `FT_SCHEMAS` (`tools`) em todo run; ao terminar o run, varre as
     mensagens reconstruídas (`latestMessages`, capturadas em `onMessagesChanged` — superfície
     documentada do subscriber) por chamadas a tools do registry ainda sem `ToolMessage`,
-    cria um **bloco inline no chat** (`createToolUiBlock`), executa o `handler(args,{container})`
-    (que **aguarda** a interação do usuário no componente), devolve o resultado via
+    cria um **bloco inline no chat** (`createToolUiBlock(message)`), executa o
+    `handler(args,{container})` (que **aguarda** a interação do usuário no componente), ecoa a
+    escolha num **balão do usuário** (`display`) e devolve o `content` via
     `agent.addMessage({role:"tool",...})` — **roda de novo** até o agente parar de
     chamá-las (fecha o loop ReAct no cliente). Status fica `waiting` enquanto aguarda.
-    - **Widgets = PUROS CONTROLES (fonte única de texto = a resposta do agente).** Os widgets
-      **não** renderizam título/mensagem (removidos dos schemas e do `ui-components.js`); a
-      pergunta/contexto vem só do texto que o agente escreve (reforçado no `system.md` e nas
-      descrições das tools). `createToolUiBlock` **anexa** os controles ao balão da
-      resposta do run (`lastRunElapsed`) → **uma mensagem só** (`Agent (Xs)` + texto +
-      controles); sem preâmbulo, cai no `createToolUiBlock` (bloco próprio com cabeçalho).
+    - **Widgets = PUROS CONTROLES; a pergunta vem do arg `message`.** Os widgets
+      (`ui-components.js`) **não** renderizam texto. A pergunta/contexto vem do arg **`message`**
+      da tool (reforçado no `system.md` e nas descrições) e o `createToolUiBlock(message)` a
+      renderiza (markdown) **acima** dos controles, no mesmo balão → **uma mensagem só**
+      (`Agent (Xs)` + pergunta + controles). Isso não depende de o modelo escrever prosa
+      (robusto com flash-lite). O balão do usuário usa `display` (rótulos amigáveis), não o
+      `content` técnico.
   - **Estado genérico:** `renderState(snapshot)` mostra todas as chaves do `STATE_SNAPSHOT`
     **exceto** as protocolares `messages`/`tools` (`PROTOCOL_STATE_KEYS`) — chave→valor,
     sem conhecer o agente. `renderStateTags(snapshot)` rende as mesmas chaves como **chips

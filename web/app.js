@@ -93,9 +93,10 @@ function applyPredict(toolName, rawArgs) {
 
 // Cria um bloco INLINE no chat onde uma frontend tool renderiza seu componente
 // interativo. Apresentado como mensagem do agente — rótulo "Agent (<duração>)",
-// espelhando a bolha de agente concluída — em vez de expor o nome cru da tool.
-// Devolve o container (nó DOM) passado ao handler.
-function createToolUiBlock() {
+// espelhando a bolha de agente concluída. A `message` (pergunta vinda do arg da tool) é
+// renderizada ACIMA dos controles, no MESMO balão → uma única mensagem (texto + widget).
+// Devolve o container (nó DOM) onde o handler monta o widget.
+function createToolUiBlock(message) {
   const label = lastRunElapsed ? agentLabelHTML(lastRunElapsed) : "Agent";
   const wrapper = document.createElement("div");
   wrapper.className = "msg-wrapper assistant tool-ui";
@@ -104,12 +105,15 @@ function createToolUiBlock() {
       `<span class="avatar" aria-hidden="true" style="display:none"></span>` +
       `<div class="who">${label}</div>` +
     `</div>` +
-    `<div class="tool-ui-body bubble"></div>`;
+    `<div class="tool-ui-body bubble">` +
+      (message ? `<div class="tool-ui-msg">${renderMarkdown(message)}</div>` : "") +
+      `<div class="tool-ui-widget"></div>` +
+    `</div>`;
   chatEl.appendChild(wrapper);
   // O widget é montado no container SÓ depois (dentro do handler). Rola após a montagem +
   // layout (duplo rAF) para mostrar o widget inteiro, não a altura antiga.
   requestAnimationFrame(() => requestAnimationFrame(scrollChatToBottom));
-  return wrapper.querySelector(".tool-ui-body");
+  return wrapper.querySelector(".tool-ui-widget");
 }
 
 function scrollChatToBottom() {
@@ -141,15 +145,21 @@ async function runWithFrontendTools(params) {
       if (typeof args === "string") {
         try { args = JSON.parse(args); } catch { args = {}; }
       }
-      let content;
+      let content, display;
       try {
         setStatus("waiting");
-        const container = createToolUiBlock();
-        content = await FT_BY_NAME.get(name).handler(args || {}, { container });
+        // `message` (genérico): a pergunta vai no balão, acima dos controles.
+        const message = args?.message || args?.prompt || args?.title || "";
+        const container = createToolUiBlock(message);
+        const res = await FT_BY_NAME.get(name).handler(args || {}, { container });
+        // Handler pode devolver { content, display } ou uma string crua (fallback).
+        content = res && typeof res === "object" ? res.content : String(res);
+        display = res && typeof res === "object" ? res.display : summarizeChoice(content);
       } catch (err) {
         content = "Erro ao executar a ferramenta no navegador: " + (err?.message || err);
+        display = content;
       }
-      addUserBubble(summarizeChoice(String(content)));
+      addUserBubble(display);
       agent.addMessage({
         id: crypto.randomUUID(),
         role: "tool",
