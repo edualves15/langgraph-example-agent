@@ -5,7 +5,7 @@
 import { HttpAgent } from "https://esm.sh/@ag-ui/client@0.0.55";
 import { renderMarkdown } from "./markdown.js";
 import { SVG } from "./icons.js";
-import { FRONTEND_TOOLS, STATE_TAG_ICONS } from "./frontend-tools.js";
+import { FRONTEND_TOOLS, STATE_TAG_ICONS, STATE_TITLES } from "./frontend-tools.js";
 
 // Constantes — fonte única para valores que aparecem em múltiplos contextos.
 const ACCENT_COLOR = "#6ea8fe";        // sincronizar com --accent em styles.css
@@ -43,6 +43,7 @@ const approvalEl = $("approval");
 const approvalText = $("approval-text");
 const summaryEl = $("summary");
 const summaryToggle = $("summary-toggle");
+const summaryToggleLabel = $("summary-toggle-label");
 const summaryCountEl = $("summary-count");
 
 threadEl.textContent = "thread: " + agent.threadId;
@@ -130,13 +131,19 @@ function collapseToolUiWidget(container) {
   container.classList.add("collapsed");
   const summary = document.createElement("button");
   summary.type = "button";
-  summary.className = "tool-ui-summary";
-  summary.innerHTML = `<span class="tog">▸</span><span>Respondido</span>`;
+  summary.className = "uic-btn uic-btn--round uic-btn--neutral tool-ui-summary";
+  summary.setAttribute("aria-label", "Mostrar ou ocultar");
+  summary.innerHTML = `<span class="tog icon" aria-hidden="true">${SVG.chevron}</span>`;
   summary.addEventListener("click", () => {
     const collapsed = container.classList.toggle("collapsed");
-    summary.querySelector(".tog").textContent = collapsed ? "▸" : "▾";
+    summary.classList.toggle("expanded", !collapsed);
   });
-  container.parentNode.insertBefore(summary, container);
+  // Ancora o botão INLINE logo após o último caractere do texto do agente (dentro do último
+  // bloco do `.tool-ui-msg`); sem mensagem, cai antes do widget.
+  const body = container.closest(".tool-ui-body");
+  const msg = body && body.querySelector(".tool-ui-msg");
+  if (msg) (msg.lastElementChild || msg).appendChild(summary);
+  else container.parentNode.insertBefore(summary, container);
 }
 
 // Extrai um bloco cercado ```suggestions ... ``` da resposta do agente (recurso do chat, não
@@ -167,6 +174,7 @@ function renderSuggestions(list) {
     if (s == null || String(s).trim() === "") continue;
     const b = document.createElement("button");
     b.type = "button";
+    b.className = "uic-btn uic-btn--pill uic-btn--neutral";
     b.dataset.prompt = String(s);
     b.textContent = String(s);
     el.appendChild(b);
@@ -461,58 +469,59 @@ function editState(mutator) {
   applyState();
 }
 
-// "Sua reserva": popover acionado por um botão no header do chat, com as escolhas acumuladas
-// — revisar e EDITAR. GENÉRICO: itera as chaves não-protocolares; arrays viram um item por
-// elemento (× remove o elemento), objetos planos uma linha por subcampo (× limpa o subcampo),
-// escalares uma linha (× limpa a chave). Ícone por chave de STATE_TAG_ICONS (único ponto de
-// domínio); sem ícone, rótulo humanizado. O botão (e o popover) somem quando não há estado.
+// Popover "Sua reserva/Seu pedido" acionado por um botão no header do chat — revisar e EDITAR.
+// O estado tem um objeto por FLUXO (`reservation`/`delivery`), padronizado `{ items, ...campos }`;
+// só o ATIVO (objeto não-vazio) é mostrado. Renderiza uniformemente os subcampos do fluxo ativo:
+// subcampo array (`items`) → uma linha por item (× remove o item); subcampo escalar → uma linha
+// (× limpa o campo). Ícone por subcampo via STATE_TAG_ICONS; título via STATE_TITLES (pontos de
+// domínio). O botão/popover somem quando não há fluxo ativo.
 function renderSummary(state) {
   const keys = state && typeof state === "object"
     ? Object.keys(state).filter((k) => !PROTOCOL_STATE_KEYS.has(k))
     : [];
-  const rows = []; // { key, label, text, remove }
-  for (const k of keys) {
+  // Fluxo ativo = primeira chave de topo cujo valor é um objeto não-vazio.
+  const flow = keys.find((k) => {
     const v = state[k];
-    if (v == null || v === "" || (Array.isArray(v) && v.length === 0)) continue;
-    if (Array.isArray(v)) {
-      v.forEach((item, i) => {
-        const text = summarizeValue(item);
-        if (!text) return;
-        rows.push({
-          key: k, label: humanizeLabel(k), text,
-          remove: () => editState((s) => { if (Array.isArray(s[k])) s[k].splice(i, 1); }),
+    return v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length > 0;
+  });
+
+  const rows = []; // { key, text, remove }
+  if (flow) {
+    for (const [sk, sv] of Object.entries(state[flow])) {
+      if (sv == null || sv === "" || (Array.isArray(sv) && sv.length === 0)) continue;
+      if (Array.isArray(sv)) {
+        sv.forEach((item, i) => {
+          const text = summarizeValue(item);
+          if (!text) return;
+          rows.push({
+            key: sk, text,
+            remove: () => editState((s) => { if (Array.isArray(s[flow]?.[sk])) s[flow][sk].splice(i, 1); }),
+          });
         });
-      });
-    } else if (typeof v === "object") {
-      for (const [sk, sv] of Object.entries(v)) {
+      } else {
         const text = summarizeValue(sv);
-        if (!text) continue;
-        rows.push({
-          key: sk, label: humanizeLabel(sk), text,
-          remove: () => editState((s) => { if (s[k] && typeof s[k] === "object") delete s[k][sk]; }),
+        if (text) rows.push({
+          key: sk, text,
+          remove: () => editState((s) => { if (s[flow]) delete s[flow][sk]; }),
         });
       }
-    } else {
-      const text = summarizeValue(v);
-      if (text) rows.push({
-        key: k, label: humanizeLabel(k), text,
-        remove: () => editState((s) => { delete s[k]; }),
-      });
     }
   }
 
   if (rows.length === 0) {
-    // Sem escolhas: esconde o botão e fecha/esvazia o popover.
+    // Sem fluxo ativo: esconde o botão e fecha/esvazia o popover.
     summaryToggle.hidden = true;
     summaryToggle.setAttribute("aria-expanded", "false");
     summaryEl.hidden = true;
     summaryEl.innerHTML = "";
     return;
   }
+  const title = STATE_TITLES[flow] || "Resumo";
   summaryToggle.hidden = false;
+  summaryToggleLabel.textContent = title;
   summaryCountEl.textContent = String(rows.length);
   summaryEl.innerHTML =
-    `<div class="summary-pop-head">Sua reserva</div>` +
+    `<div class="summary-pop-head">${escapeHtml(title)}</div>` +
     `<div class="summary-body"></div>`;
   const body = summaryEl.querySelector(".summary-body");
   for (const r of rows) {
@@ -521,11 +530,11 @@ function renderSummary(state) {
     const icon = STATE_TAG_ICONS[r.key];
     const lead = icon
       ? `<span class="summary-icon">${escapeHtml(icon)}</span>`
-      : `<span class="summary-key">${escapeHtml(r.label)}</span>`;
+      : `<span class="summary-key">${escapeHtml(humanizeLabel(r.key))}</span>`;
     row.innerHTML = lead + `<span class="summary-val">${escapeHtml(prettyTagText(r.text))}</span>`;
     const x = document.createElement("button");
     x.type = "button";
-    x.className = "summary-x";
+    x.className = "uic-btn uic-btn--round uic-btn--sm summary-x";
     x.setAttribute("aria-label", "Remover");
     x.textContent = "×";
     // stopPropagation: editar re-renderiza o popover (o × é destacado do DOM); sem isso o

@@ -14,10 +14,12 @@ def test_cors_origins_parsing():
 
 def test_local_tools_and_predict_state():
     names = {t.name for t in get_local_tools()}
-    assert {"calculate_math_expression", "get_today_info", "get_menu", "update_reservation"} <= names
-    assert PREDICT_STATE == [
-        {"state_key": "order", "tool": "update_reservation", "tool_argument": "item_ids"}
-    ]
+    assert {
+        "calculate_math_expression", "get_today_info", "get_menu",
+        "update_reservation", "update_delivery", "create_delivery_order",
+    } <= names
+    # PredictState removido (no-op com Gemini; não cabe no `items` aninhado).
+    assert PREDICT_STATE == []
 
 
 def test_system_prompt_injects_date():

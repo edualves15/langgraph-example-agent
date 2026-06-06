@@ -36,12 +36,13 @@
                renderSummary em app.js; editável; oculto quando não há estado. -->
           <button
             id="summary-toggle"
-            class="ghost summary-toggle"
+            class="uic-btn uic-btn--ghost uic-btn--sm summary-toggle"
             type="button"
             aria-expanded="false"
             hidden
           >
-            <span class="icon" data-icon="receipt"></span><span>Sua reserva</span>
+            <span class="icon" data-icon="receipt"></span>
+            <span id="summary-toggle-label">Sua reserva</span>
             <span class="summary-count" id="summary-count"></span>
           </button>
           <div id="summary" class="summary-popover" hidden></div>
@@ -71,7 +72,7 @@
                   id="send"
                   type="submit"
                   title="Enviar"
-                  class="icon"
+                  class="uic-btn uic-btn--primary uic-btn--round uic-btn--icon icon"
                   data-icon="send"
                   disabled
                 ></button>
@@ -131,11 +132,11 @@
                   </label>
                   <button
                     id="copy-log"
-                    class="ghost icon-only icon"
+                    class="uic-btn uic-btn--ghost uic-btn--sm icon-only icon"
                     data-icon="copy"
                     title="Copiar eventos"
                   ></button>
-                  <button id="clear-log" class="ghost" title="Limpar log">
+                  <button id="clear-log" class="uic-btn uic-btn--ghost uic-btn--sm" title="Limpar log">
                     Limpar
                   </button>
                 </div>
@@ -153,11 +154,11 @@
         <h3>Aprovação necessária</h3>
         <p id="approval-text"></p>
         <div class="approval-actions">
-          <button id="approve" class="primary">
+          <button id="approve" class="uic-btn uic-btn--success uic-btn--lg">
             <span class="btn-icon approve-icon icon" data-icon="approve"></span
             >Aprovar
           </button>
-          <button id="reject" class="danger">
+          <button id="reject" class="uic-btn uic-btn--danger uic-btn--lg">
             <span class="btn-icon reject-icon icon" data-icon="reject"></span
             >Rejeitar
           </button>

@@ -31,6 +31,15 @@ _MENU = [
 _MENU_BY_ID = {item["id"]: item for item in _MENU}
 
 
+def _items_from_ids(item_ids: list[str]) -> list[dict]:
+    """Converte ids de pratos em itens padronizados `{name, price}` (ignora ids inválidos)."""
+    return [
+        {"name": _MENU_BY_ID[i]["name"], "price": _MENU_BY_ID[i]["price"]}
+        for i in item_ids
+        if i in _MENU_BY_ID
+    ]
+
+
 @tool
 def get_menu() -> str:
     """Return the restaurant menu (dishes with id, name, description and price).
@@ -54,13 +63,12 @@ def update_reservation(
     party_size: int | None = None,
     customer_name: str | None = None,
 ) -> Command:
-    """Update the customer's current reservation draft (shared state shown live on screen).
+    """Update the customer's current TABLE RESERVATION draft (shared state shown live).
 
-    Call this EVERY time the customer makes or changes a choice — picked dishes (incl.
-    selecting cards), date, time, party size or name — passing ONLY the fields that
-    changed. The draft is merged and shown live in the state panel, so it always reflects
-    everything chosen so far. For dishes, pass the FULL list of chosen ids (replaces the
-    dishes; empty list clears them).
+    Call this EVERY time the customer makes or changes a reservation choice — picked dishes
+    (incl. selecting cards), date, time, party size or name — passing ONLY the fields that
+    changed. The draft is merged and shown live, so it always reflects everything chosen so
+    far. For dishes, pass the FULL list of chosen ids (replaces the dishes; empty clears).
 
     Input (all optional; pass what changed):
     - item_ids: dish ids currently chosen.
@@ -71,17 +79,9 @@ def update_reservation(
 
     Returns a short confirmation; the merged draft is emitted to the UI as shared state.
     """
-    update: dict = {}
-
-    if item_ids is not None:
-        items = [
-            {"name": _MENU_BY_ID[i]["name"], "price": _MENU_BY_ID[i]["price"]}
-            for i in item_ids
-            if i in _MENU_BY_ID
-        ]
-        update["order"] = items
-
     reservation = dict(state.get("reservation") or {})
+    if item_ids is not None:
+        reservation["items"] = _items_from_ids(item_ids)
     for key, value in (
         ("date", date_iso),
         ("time", time),
@@ -90,12 +90,63 @@ def update_reservation(
     ):
         if value is not None:
             reservation[key] = value
-    update["reservation"] = reservation
 
-    update["messages"] = [
-        ToolMessage(content="Reserva atualizada.", tool_call_id=tool_call_id)
-    ]
-    return Command(update=update)
+    # Um único fluxo ativo por vez: atualizar a reserva zera o rascunho de delivery.
+    return Command(
+        update={
+            "reservation": reservation,
+            "delivery": {},
+            "messages": [ToolMessage(content="Reserva atualizada.", tool_call_id=tool_call_id)],
+        }
+    )
+
+
+@tool
+def update_delivery(
+    state: Annotated[dict, InjectedState],
+    tool_call_id: Annotated[str, InjectedToolCallId],
+    item_ids: list[str] | None = None,
+    customer_name: str | None = None,
+    address: str | None = None,
+    phone: str | None = None,
+    notes: str | None = None,
+) -> Command:
+    """Update the customer's current DELIVERY ORDER draft (shared state shown live).
+
+    Call this EVERY time the customer makes or changes a delivery choice — picked dishes
+    (incl. selecting cards), name, address, phone or notes — passing ONLY the fields that
+    changed. The draft is merged and shown live. For dishes, pass the FULL list of chosen
+    ids (replaces the dishes; empty clears).
+
+    Input (all optional; pass what changed):
+    - item_ids: dish ids currently chosen.
+    - customer_name: name for the order.
+    - address: delivery address.
+    - phone: contact phone.
+    - notes: free-text notes (e.g. "no onions", reference point).
+
+    Returns a short confirmation; the merged draft is emitted to the UI as shared state.
+    """
+    delivery = dict(state.get("delivery") or {})
+    if item_ids is not None:
+        delivery["items"] = _items_from_ids(item_ids)
+    for key, value in (
+        ("customer_name", customer_name),
+        ("address", address),
+        ("phone", phone),
+        ("notes", notes),
+    ):
+        if value is not None:
+            delivery[key] = value
+
+    # Um único fluxo ativo por vez: atualizar o delivery zera o rascunho de reserva.
+    return Command(
+        update={
+            "delivery": delivery,
+            "reservation": {},
+            "messages": [ToolMessage(content="Pedido atualizado.", tool_call_id=tool_call_id)],
+        }
+    )
 
 
 @tool
@@ -179,15 +230,72 @@ def create_reservation(
             f"Reserva confirmada para {customer_name} em {date_iso} às {time}, "
             f"{party_size} pessoa(s).{extra}"
         )
-        # Reserva concluída → zera o rascunho compartilhado para a PRÓXIMA reserva começar
-        # limpa (o painel de estado zera via STATE_SNAPSHOT/DELTA). Reducer default
-        # (overwrite), então `[]`/`{}` limpam `order`/`reservation`.
+        # Concluída → zera os rascunhos compartilhados para o próximo fluxo começar limpo
+        # (o painel/popover zera via STATE_SNAPSHOT/DELTA; reducer default = overwrite).
         return Command(
             update={
-                "order": [],
                 "reservation": {},
+                "delivery": {},
                 "messages": [ToolMessage(content=confirmation, tool_call_id=tool_call_id)],
             }
         )
     # Rejeitado: mantém o rascunho para o usuário ajustar (sem mexer no estado).
     return f"Reserva cancelada pelo usuário. Nada foi reservado para {customer_name}."
+
+
+@tool
+def create_delivery_order(
+    tool_call_id: Annotated[str, InjectedToolCallId],
+    customer_name: str,
+    address: str,
+    phone: str,
+    item_ids: list[str],
+    notes: str | None = None,
+) -> Command | str:
+    """Place a delivery order. Requires human approval before confirming (HITL).
+
+    Use this tool only after the user has chosen the dishes and provided name, address and
+    phone. Execution pauses automatically for the user to approve or reject; consider the
+    order placed only after approval.
+
+    Input:
+    - customer_name: name for the order.
+    - address: delivery address.
+    - phone: contact phone.
+    - item_ids: list of dish ids chosen (must not be empty).
+    - notes: optional free-text notes.
+
+    Returns a confirmation that the order was placed, or that it was cancelled.
+    """
+    dishes = [_MENU_BY_ID[i]["name"] for i in item_ids if i in _MENU_BY_ID]
+
+    decision = interrupt(
+        {
+            "question": "Confirmar este pedido para delivery?",
+            "Cliente": customer_name,
+            "Endereço": address,
+            "Telefone": phone,
+            "Pratos": ", ".join(dishes) if dishes else "—",
+            "Observações": notes or "—",
+        }
+    )
+
+    if isinstance(decision, dict):
+        approved = bool(decision.get("approved", False))
+    else:
+        approved = bool(decision)
+
+    if approved:
+        note = f" Obs.: {notes}." if notes else ""
+        confirmation = (
+            f"Pedido confirmado para {customer_name} — entrega em {address}, "
+            f"tel. {phone}. Pratos: {', '.join(dishes)}.{note}"
+        )
+        return Command(
+            update={
+                "reservation": {},
+                "delivery": {},
+                "messages": [ToolMessage(content=confirmation, tool_call_id=tool_call_id)],
+            }
+        )
+    return f"Pedido cancelado pelo usuário. Nada foi pedido para {customer_name}."

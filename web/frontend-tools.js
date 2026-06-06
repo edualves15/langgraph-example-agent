@@ -17,15 +17,25 @@
 
 import { cardList, optionList, confirmDialog, buttonGroup, numberStepper } from "./ui-components.js";
 
-// Ícones por chave de estado para as tags de "escolhas feitas" acima do input (web/app.js).
-// ÚNICO ponto de domínio dessas tags: uma chave sem ícone cai no rótulo humanizado (genérico).
-// `{}` → tags 100% genéricas.
+// Ícones por chave (subcampo) de estado para o resumo "Sua reserva/Seu pedido" (web/app.js).
+// Um dos dois pontos de domínio do front (junto de STATE_TITLES); chave sem ícone cai no
+// rótulo humanizado (genérico). `{}` → 100% genérico.
 export const STATE_TAG_ICONS = {
-  order: "🍽️",
+  items: "🍽️",
   date: "📅",
   time: "🕒",
   party_size: "👥",
   customer_name: "👤",
+  address: "📍",
+  phone: "☎️",
+  notes: "📝",
+};
+
+// Título do resumo por FLUXO (chave de topo do estado). O outro ponto de domínio do front;
+// fluxo sem título cai num rótulo genérico ("Resumo"). Ver renderSummary em web/app.js.
+export const STATE_TITLES = {
+  reservation: "Sua reserva",
+  delivery: "Seu pedido",
 };
 
 export const FRONTEND_TOOLS = [

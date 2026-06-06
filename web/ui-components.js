@@ -195,9 +195,9 @@ export function numberStepper(container, { min = 1, max, step = 1, value } = {})
     root.className = "uic uic-stepper-wrap";
     root.innerHTML =
       `<div class="uic-stepper">` +
-        `<button type="button" class="uic-step" data-d="-1" aria-label="Diminuir">−</button>` +
+        `<button type="button" class="uic-btn uic-btn--icon uic-btn--neutral uic-step" data-d="-1" aria-label="Diminuir">−</button>` +
         `<input class="uic-step-val" type="number" inputmode="numeric" value="${val}">` +
-        `<button type="button" class="uic-step" data-d="1" aria-label="Aumentar">+</button>` +
+        `<button type="button" class="uic-btn uic-btn--icon uic-btn--neutral uic-step" data-d="1" aria-label="Aumentar">+</button>` +
       `</div>` +
       `<button type="button" class="uic-btn uic-btn--primary uic-confirm">Confirmar</button>`;
 
