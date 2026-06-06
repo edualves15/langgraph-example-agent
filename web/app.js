@@ -41,7 +41,9 @@ const inputEl = $("input");
 const sendBtn = $("send");
 const approvalEl = $("approval");
 const approvalText = $("approval-text");
-const stateTagsEl = $("state-tags");
+const summaryEl = $("summary");
+const summaryToggle = $("summary-toggle");
+const summaryCountEl = $("summary-count");
 
 threadEl.textContent = "thread: " + agent.threadId;
 
@@ -73,7 +75,7 @@ let predictMap = [];  // mapeamento vindo do evento PredictState
 function applyState() {
   const merged = { ...lastState, ...predicted };
   renderState(merged);
-  renderStateTags(merged);
+  renderSummary(merged);
 }
 
 // Aplica a previsão otimista: se `toolName` está no mapeamento, lê `tool_argument` dos
@@ -120,6 +122,57 @@ function scrollChatToBottom() {
   chatEl.scrollTop = chatEl.scrollHeight;
 }
 
+// Colapsa o widget concluído num resumo de uma linha com chevron. Genérico — só esconde os
+// controles (que já ficam disabled/muted) e oferece reexpandir. A escolha em si é ecoada no
+// balão do usuário, então o resumo é enxuto.
+function collapseToolUiWidget(container) {
+  if (!container || !container.parentNode) return;
+  container.classList.add("collapsed");
+  const summary = document.createElement("button");
+  summary.type = "button";
+  summary.className = "tool-ui-summary";
+  summary.innerHTML = `<span class="tog">▸</span><span>Respondido</span>`;
+  summary.addEventListener("click", () => {
+    const collapsed = container.classList.toggle("collapsed");
+    summary.querySelector(".tog").textContent = collapsed ? "▸" : "▾";
+  });
+  container.parentNode.insertBefore(summary, container);
+}
+
+// Extrai um bloco cercado ```suggestions ... ``` da resposta do agente (recurso do chat, não
+// uma tool). Tolerante a fence ainda ABERTO durante o streaming (some sem piscar). Devolve
+// { body, suggestions } — body = texto sem o bloco; suggestions = uma por linha (sem -/*/aspas).
+// Genérico: o front não conhece o domínio, só extrai uma lista de strings da resposta.
+function splitSuggestions(raw) {
+  const m = raw.match(/```\s*suggestions\b[\s\S]*?(?:```|$)/i);
+  if (!m) return { body: raw, suggestions: [] };
+  const inner = m[0]
+    .replace(/```\s*suggestions\b/i, "")
+    .replace(/```\s*$/, "");
+  const suggestions = inner
+    .split("\n")
+    .map((s) => s.replace(/^[-*]\s*/, "").replace(/^["']|["']$/g, "").trim())
+    .filter(Boolean);
+  return { body: raw.slice(0, m.index).replace(/\s+$/, ""), suggestions };
+}
+
+// Renderiza as "próximas perguntas" como chips no slot de sugestões (acima do input).
+// GENÉRICO: recebe uma lista de strings (extraídas da resposta) e cria botões `data-prompt`;
+// o handler de clique já existente faz `send(prompt)`. Limpo no início de cada run.
+function renderSuggestions(list) {
+  const el = document.getElementById("suggestions");
+  if (!el) return;
+  el.innerHTML = "";
+  for (const s of list || []) {
+    if (s == null || String(s).trim() === "") continue;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.prompt = String(s);
+    b.textContent = String(s);
+    el.appendChild(b);
+  }
+}
+
 // Roda o agente anunciando as frontend tools e, sempre que ele chamar uma delas,
 // renderiza o componente inline no chat, aguarda a interação do usuário, devolve o
 // resultado como ToolMessage e roda de novo — até o agente parar de chamá-las (mesmo
@@ -145,16 +198,21 @@ async function runWithFrontendTools(params) {
       if (typeof args === "string") {
         try { args = JSON.parse(args); } catch { args = {}; }
       }
+      const tool = FT_BY_NAME.get(name);
+
       let content, display;
+      let container = null;
       try {
         setStatus("waiting");
         // `message` (genérico): a pergunta vai no balão, acima dos controles.
         const message = args?.message || args?.prompt || args?.title || "";
-        const container = createToolUiBlock(message);
-        const res = await FT_BY_NAME.get(name).handler(args || {}, { container });
+        container = createToolUiBlock(message);
+        const res = await tool.handler(args || {}, { container });
         // Handler pode devolver { content, display } ou uma string crua (fallback).
         content = res && typeof res === "object" ? res.content : String(res);
         display = res && typeof res === "object" ? res.display : summarizeChoice(content);
+        // Após a escolha, colapsa o widget num resumo (a escolha já vai no balão do usuário).
+        collapseToolUiWidget(container);
       } catch (err) {
         content = "Erro ao executar a ferramenta no navegador: " + (err?.message || err);
         display = content;
@@ -389,45 +447,107 @@ function prettyTagText(text) {
   return m ? `${m[3]}/${m[2]}` : text;
 }
 
-// Tira de chips (acima do input) com as "escolhas feitas" do estado compartilhado.
-// GENÉRICA: itera as chaves não-protocolares; um objeto plano vira um chip por subcampo;
-// arrays/escalares viram um chip. O ÍCONE por chave vem de STATE_TAG_ICONS (único ponto de
-// domínio); sem ícone, mostra o rótulo humanizado. Sem conhecer o domínio aqui.
-function renderStateTags(state) {
-  const chips = []; // [key, text]
+// Edição GENÉRICA do estado compartilhado (AG-UI bidirecional): clona o estado autoritativo,
+// aplica `mutator`, escreve em `agent.state` (vai em RunAgentInput.state no próximo run, lido
+// pelo agente no próximo turno) e re-renderiza otimisticamente. Sem conhecer o domínio — só
+// operações estruturais (remover item de array / limpar chave).
+function editState(mutator) {
+  const next = structuredClone(lastState && typeof lastState === "object" ? lastState : {});
+  mutator(next);
+  lastState = next;
+  if (typeof agent.setState === "function") agent.setState(next);
+  else agent.state = next;
+  predicted = {};
+  applyState();
+}
+
+// "Sua reserva": popover acionado por um botão no header do chat, com as escolhas acumuladas
+// — revisar e EDITAR. GENÉRICO: itera as chaves não-protocolares; arrays viram um item por
+// elemento (× remove o elemento), objetos planos uma linha por subcampo (× limpa o subcampo),
+// escalares uma linha (× limpa a chave). Ícone por chave de STATE_TAG_ICONS (único ponto de
+// domínio); sem ícone, rótulo humanizado. O botão (e o popover) somem quando não há estado.
+function renderSummary(state) {
   const keys = state && typeof state === "object"
     ? Object.keys(state).filter((k) => !PROTOCOL_STATE_KEYS.has(k))
     : [];
+  const rows = []; // { key, label, text, remove }
   for (const k of keys) {
     const v = state[k];
     if (v == null || v === "" || (Array.isArray(v) && v.length === 0)) continue;
-    if (!Array.isArray(v) && typeof v === "object") {
+    if (Array.isArray(v)) {
+      v.forEach((item, i) => {
+        const text = summarizeValue(item);
+        if (!text) return;
+        rows.push({
+          key: k, label: humanizeLabel(k), text,
+          remove: () => editState((s) => { if (Array.isArray(s[k])) s[k].splice(i, 1); }),
+        });
+      });
+    } else if (typeof v === "object") {
       for (const [sk, sv] of Object.entries(v)) {
         const text = summarizeValue(sv);
-        if (text) chips.push([sk, text]);
+        if (!text) continue;
+        rows.push({
+          key: sk, label: humanizeLabel(sk), text,
+          remove: () => editState((s) => { if (s[k] && typeof s[k] === "object") delete s[k][sk]; }),
+        });
       }
     } else {
       const text = summarizeValue(v);
-      if (text) chips.push([k, text]);
+      if (text) rows.push({
+        key: k, label: humanizeLabel(k), text,
+        remove: () => editState((s) => { delete s[k]; }),
+      });
     }
   }
-  stateTagsEl.innerHTML = "";
-  if (chips.length === 0) {
-    stateTagsEl.hidden = true;
+
+  if (rows.length === 0) {
+    // Sem escolhas: esconde o botão e fecha/esvazia o popover.
+    summaryToggle.hidden = true;
+    summaryToggle.setAttribute("aria-expanded", "false");
+    summaryEl.hidden = true;
+    summaryEl.innerHTML = "";
     return;
   }
-  for (const [key, text] of chips) {
-    const tag = document.createElement("span");
-    tag.className = "state-tag";
-    const icon = STATE_TAG_ICONS[key];
+  summaryToggle.hidden = false;
+  summaryCountEl.textContent = String(rows.length);
+  summaryEl.innerHTML =
+    `<div class="summary-pop-head">Sua reserva</div>` +
+    `<div class="summary-body"></div>`;
+  const body = summaryEl.querySelector(".summary-body");
+  for (const r of rows) {
+    const row = document.createElement("div");
+    row.className = "summary-row";
+    const icon = STATE_TAG_ICONS[r.key];
     const lead = icon
-      ? `<span class="state-tag-icon">${escapeHtml(icon)}</span>`
-      : `<span class="state-tag-key">${escapeHtml(humanizeLabel(key))}</span>`;
-    tag.innerHTML = lead + escapeHtml(prettyTagText(text));
-    stateTagsEl.appendChild(tag);
+      ? `<span class="summary-icon">${escapeHtml(icon)}</span>`
+      : `<span class="summary-key">${escapeHtml(r.label)}</span>`;
+    row.innerHTML = lead + `<span class="summary-val">${escapeHtml(prettyTagText(r.text))}</span>`;
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "summary-x";
+    x.setAttribute("aria-label", "Remover");
+    x.textContent = "×";
+    // stopPropagation: editar re-renderiza o popover (o × é destacado do DOM); sem isso o
+    // handler de clique-fora no document fecharia o popover. Mantém aberto após editar.
+    x.addEventListener("click", (e) => { e.stopPropagation(); r.remove(); });
+    row.appendChild(x);
+    body.appendChild(row);
   }
-  stateTagsEl.hidden = false;
 }
+
+// Abre/fecha o popover "Sua reserva". O clique no × (editar) re-renderiza e mantém aberto.
+function toggleSummary(open) {
+  const next = open ?? summaryEl.hidden;
+  summaryEl.hidden = !next;
+  summaryToggle.setAttribute("aria-expanded", next ? "true" : "false");
+}
+summaryToggle.addEventListener("click", (e) => { e.stopPropagation(); toggleSummary(); });
+// Clique fora fecha o popover.
+document.addEventListener("click", (e) => {
+  if (summaryEl.hidden) return;
+  if (!summaryEl.contains(e.target) && !summaryToggle.contains(e.target)) toggleSummary(false);
+});
 
 // Preenche o campo de argumentos de um tool card a partir de um valor cru
 // (string JSON, objeto ou nulo). Mantém oculto quando não há argumentos ({}).
@@ -467,6 +587,8 @@ const subscriber = {
   },
   onRunStartedEvent: () => {
     setStatus("running");
+    // Sugestões do turno anterior somem ao iniciar um novo run.
+    renderSuggestions([]);
     runStartTime = Date.now();
     currentAction = "trabalhando";
     const block = createAgentWrapper("spinner", "Working… (0.0s · " + currentAction + ")", "");
@@ -540,14 +662,18 @@ const subscriber = {
     const b = assistantBubbles.get(event.messageId) || runBubble;
     if (!b) return;
     b.raw += event.delta;
-    b.body.innerHTML = renderMarkdown(b.raw) + '<i class="blink"></i>';
+    // Esconde o bloco ```suggestions do texto exibido (inclusive durante o streaming).
+    b.body.innerHTML = renderMarkdown(splitSuggestions(b.raw).body) + '<i class="blink"></i>';
     chatEl.scrollTop = chatEl.scrollHeight;
   },
   onTextMessageEndEvent: ({ event }) => {
     const b = assistantBubbles.get(event.messageId);
     if (b) {
       b.el.classList.remove("streaming");
-      b.body.innerHTML = renderMarkdown(b.raw);
+      // Sugestões = recurso do chat: extraídas da resposta do agente e viram chips.
+      const { body, suggestions } = splitSuggestions(b.raw);
+      b.body.innerHTML = renderMarkdown(body);
+      if (suggestions.length) renderSuggestions(suggestions);
     }
   },
 

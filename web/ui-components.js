@@ -57,6 +57,11 @@ export function optionList(container, { options, multiple = true }) {
       `<button type="button" class="uic-btn uic-btn--primary uic-confirm">Confirmar</button>`;
 
     const btn = root.querySelector(".uic-confirm");
+    // "Confirmar" só habilita com ≥1 opção marcada — impede envio de resposta vazia.
+    btn.disabled = true;
+    root.querySelector(".uic-list").addEventListener("change", () => {
+      btn.disabled = root.querySelectorAll("input:checked").length === 0;
+    });
     btn.addEventListener("click", () => {
       const selected = Array.from(
         root.querySelectorAll("input:checked"),
@@ -93,6 +98,10 @@ export function cardList(container, { cards, multiple = true, currency }) {
       `</div>` +
       `<button type="button" class="uic-btn uic-btn--primary uic-confirm">Confirmar</button>`;
 
+    const btn = root.querySelector(".uic-confirm");
+    // "Confirmar" só habilita com ≥1 card selecionado — impede envio de resposta vazia.
+    btn.disabled = true;
+
     const selected = new Set();
     root.querySelectorAll(".uic-card").forEach((card) => {
       card.addEventListener("click", () => {
@@ -108,10 +117,10 @@ export function cardList(container, { cards, multiple = true, currency }) {
           selected.add(id);
           card.classList.add("sel");
         }
+        btn.disabled = selected.size === 0;
       });
     });
 
-    const btn = root.querySelector(".uic-confirm");
     btn.addEventListener("click", () => {
       finish(root, btn);
       resolve(Array.from(selected));

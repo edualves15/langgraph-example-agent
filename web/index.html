@@ -32,6 +32,19 @@
       <section class="panel chat-panel is-empty">
         <div class="panel-head">
           <span class="panel-head-icon icon" data-icon="chat"></span>Chat
+          <!-- "Sua reserva": botão de ação + popover (escolhas acumuladas). Preenchido por
+               renderSummary em app.js; editável; oculto quando não há estado. -->
+          <button
+            id="summary-toggle"
+            class="ghost summary-toggle"
+            type="button"
+            aria-expanded="false"
+            hidden
+          >
+            <span class="icon" data-icon="receipt"></span><span>Sua reserva</span>
+            <span class="summary-count" id="summary-count"></span>
+          </button>
+          <div id="summary" class="summary-popover" hidden></div>
         </div>
         <div id="chat" class="chat">
           <div class="chat-start" id="chat-start">
@@ -66,9 +79,6 @@
             </form>
           </div>
         </div>
-        <!-- Tira genérica de "escolhas feitas" (estado compartilhado), acima do input.
-             Preenchida por renderStateTags em app.js; oculta quando não há estado. -->
-        <div id="state-tags" class="state-tags" hidden></div>
       </section>
 
       <!-- Coluna lateral (painel de debug com abas) -->

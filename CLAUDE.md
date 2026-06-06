@@ -169,7 +169,8 @@ Página estática servida pelo FastAPI, sem build step:
   grid `auto-fill` com largura limitada empacotado à esquerda; respostas rápidas do tamanho
   do conteúdo. Anti-XSS (escapa todo texto). **Sem moeda hardcoded**: `cardList`/`present_cards`
   aceitam um `currency` (ISO 4217) opcional em runtime para formatar preços; sem ele, o preço
-  é renderizado cru (número ou string passthrough).
+  é renderizado cru (número ou string passthrough). **`optionList`/`cardList`** mantêm o
+  "Confirmar" **desabilitado** (mutado) até haver ≥1 seleção válida — impede envio vazio.
 - `frontend-tools.js` — **tools de UI genéricas** anunciadas ao agente: `present_cards`,
   `present_options`, `present_buttons` (botões de resposta rápida de um toque),
   `present_number` (seletor de número/quantidade), `confirm_dialog`
@@ -179,7 +180,8 @@ Página estática servida pelo FastAPI, sem build step:
   agente); `display` é o texto **amigável** do balão do usuário (rótulos — título do card,
   label do botão, etc. — não ids/valores crus). Toda tool tem um arg **`message`** (a
   pergunta), renderizado pelo `app.js` **acima** dos controles, no mesmo balão.
-  Renderizadas **inline no chat**. Ver https://docs.ag-ui.com/concepts/tools.
+  Renderizadas **inline no chat**. Após a escolha, o `app.js` **colapsa** o widget num resumo
+  de uma linha (`✓ Respondido` + chevron). Ver https://docs.ag-ui.com/concepts/tools.
 - `index.html` — painel de chat + lateral (abas estado/tool calls/eventos). Sem literais do
   agente (slot de sugestões vazio; painel de estado genérico). Os componentes interativos
   são montados inline no chat (não há painel lateral de frontend tools).
@@ -192,10 +194,11 @@ Página estática servida pelo FastAPI, sem build step:
     mensagens reconstruídas (`latestMessages`, capturadas em `onMessagesChanged` — superfície
     documentada do subscriber) por chamadas a tools do registry ainda sem `ToolMessage`,
     cria um **bloco inline no chat** (`createToolUiBlock(message)`), executa o
-    `handler(args,{container})` (que **aguarda** a interação do usuário no componente), ecoa a
-    escolha num **balão do usuário** (`display`) e devolve o `content` via
-    `agent.addMessage({role:"tool",...})` — **roda de novo** até o agente parar de
-    chamá-las (fecha o loop ReAct no cliente). Status fica `waiting` enquanto aguarda.
+    `handler(args,{container})` (que **aguarda** a interação do usuário no componente), **colapsa**
+    o widget num resumo (`collapseToolUiWidget`), ecoa a escolha num **balão do usuário**
+    (`display`) e devolve o `content` via `agent.addMessage({role:"tool",...})` — **roda de novo**
+    até o agente parar de chamá-las (fecha o loop ReAct no cliente). Status fica `waiting`
+    enquanto aguarda.
     - **Widgets = PUROS CONTROLES; a pergunta vem do arg `message`.** Os widgets
       (`ui-components.js`) **não** renderizam texto. A pergunta/contexto vem do arg **`message`**
       da tool (reforçado no `system.md` e nas descrições) e o `createToolUiBlock(message)` a
@@ -205,13 +208,24 @@ Página estática servida pelo FastAPI, sem build step:
       `content` técnico.
   - **Estado genérico:** `renderState(snapshot)` mostra todas as chaves do `STATE_SNAPSHOT`
     **exceto** as protocolares `messages`/`tools` (`PROTOCOL_STATE_KEYS`) — chave→valor,
-    sem conhecer o agente. `renderStateTags(snapshot)` rende as mesmas chaves como **chips
-    pílula read-only acima do input** (as "escolhas feitas"): objeto plano vira um chip por
-    subcampo, arrays/escalares viram um chip (`summarizeValue` prefere `name/title/label/id`
-    — convenção genérica; datas ISO viram `DD/MM` por heurística genérica). O **ícone por
-    chave** vem de `STATE_TAG_ICONS` (em `frontend-tools.js`, **único ponto de domínio** das
-    tags; chave sem ícone → rótulo humanizado `Rótulo: valor`; `{}` → 100% genérico). Ambos
-    chamados em `applyState()`.
+    sem conhecer o agente. `renderSummary(snapshot)` rende as mesmas chaves num **popover "Sua
+    reserva"** acionado por um **botão no header do chat** (`#summary-toggle` + `#summary`, com
+    contador; some quando não há estado): array vira uma linha por elemento, objeto plano uma
+    linha por subcampo, escalar uma linha (`summarizeValue` prefere `name/title/label/id`; datas
+    ISO viram `DD/MM` por heurística genérica). O **ícone por chave** vem de `STATE_TAG_ICONS`
+    (em `frontend-tools.js`, **único ponto de domínio**; sem ícone → rótulo humanizado; `{}` →
+    100% genérico). Cada linha tem um **×** que **edita** o estado de forma estrutural genérica
+    (remove item de array / limpa chave) via **estado bidirecional do AG-UI**: `editState` clona,
+    muta, escreve em `agent.state`/`agent.setState` (vai em `RunAgentInput.state` no próximo run,
+    lido pelo agente no próximo turno) e re-renderiza otimisticamente. Ambos (`renderState` +
+    `renderSummary`) chamados em `applyState()`.
+  - **Sugestões de próxima pergunta = recurso do chat (não-tool).** O agente termina a resposta
+    com um bloco ` ```suggestions ` (uma sugestão por linha); `splitSuggestions(raw)` o extrai da
+    resposta (escondendo-o do texto **inclusive durante o streaming**) e `renderSuggestions` cria
+    chips `data-prompt` no slot `#suggestions` (acima do input; clicar faz `send`). Limpos em
+    `RUN_STARTED`. **Sem tool, sem chamada LLM extra** (vêm no mesmo texto). Não há primitivo
+    oficial AG-UI/LangGraph de sugestões (o CopilotKit faz com +1 chamada LLM); a convenção
+    ` ```suggestions ` é genérica (o front só extrai uma lista de strings).
   - **HITL genérico e legível:** o `value` do interrupt (verbatim, app-defined) é
     renderizado de forma **legível** (não técnica) por `showApproval` — texto-guia em
     destaque (`question`/`message`/`description`/`prompt`) + os demais campos como linhas
