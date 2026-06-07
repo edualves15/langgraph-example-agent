@@ -17,3 +17,4 @@ class Domain:
     prompt: str                                        # fragmento de system prompt (papel/fluxos)
     predict_state: list[dict] = field(default_factory=list)  # mapeamento AG-UI PredictState
     ui_hints: dict = field(default_factory=dict)       # {state_tag_icons, state_titles} p/ o front
+    mcp_servers: dict = field(default_factory=dict)    # servidores MCP específicos do domínio

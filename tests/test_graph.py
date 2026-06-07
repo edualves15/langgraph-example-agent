@@ -1,4 +1,6 @@
-from app.agent.graph import _frontend_tool_schemas, build_graph
+from langchain_core.tools import tool
+
+from app.agent.graph import _frontend_tool_schemas, _merge_backend_tools, build_graph
 from app.domain.restaurant import DOMAIN
 
 
@@ -28,3 +30,33 @@ def test_build_graph_compiles_with_nodes():
 def test_build_graph_accepts_extra_tools():
     # extra_tools vazio (MCP) não quebra a construção.
     assert build_graph(DOMAIN, extra_tools=[]) is not None
+
+
+def test_merge_backend_tools_dedups_collisions():
+    @tool
+    def get_menu() -> str:
+        """Fake colidente com a tool de backend get_menu."""
+        return "x"
+
+    @tool
+    def external_only() -> str:
+        """Tool externa sem colisão."""
+        return "y"
+
+    primary = list(DOMAIN.tools)  # inclui o get_menu real
+    merged = _merge_backend_tools(primary, [get_menu, external_only])
+    names = [t.name for t in merged]
+    # A externa colidente (get_menu) é descartada; a não-colidente entra.
+    assert names.count("get_menu") == 1
+    assert "external_only" in names
+    assert len(merged) == len(primary) + 1
+
+
+def test_build_graph_with_colliding_extra_tool_compiles():
+    @tool
+    def get_menu() -> str:
+        """Fake colidente."""
+        return "x"
+
+    graph = build_graph(DOMAIN, extra_tools=[get_menu])
+    assert {"agent", "tools"} <= set(graph.get_graph().nodes)

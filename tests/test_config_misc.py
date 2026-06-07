@@ -35,6 +35,8 @@ def test_restaurant_domain_bundle():
     assert "state_tag_icons" in DOMAIN.ui_hints and "state_titles" in DOMAIN.ui_hints
     # PredictState removido (no-op com Gemini; não cabe no `items` aninhado).
     assert DOMAIN.predict_state == []
+    # MCP do domínio: vazio por padrão (placeholder app/domain/restaurant/mcp.json).
+    assert DOMAIN.mcp_servers == {}
 
 
 def test_system_prompt_injects_date():
@@ -50,7 +52,7 @@ def test_system_prompt_injects_date():
 def test_mcp_servers_empty_by_default():
     import asyncio
 
-    from app.services.mcp_service import _load_servers, get_mcp_tools
+    from app.services.mcp_service import general_mcp_servers, get_mcp_tools
 
-    assert _load_servers() == {}
+    assert general_mcp_servers() == {}
     assert asyncio.run(get_mcp_tools()) == []

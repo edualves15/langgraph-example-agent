@@ -1,3 +1,5 @@
+import logging
+
 from langchain_core.messages import SystemMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
@@ -9,6 +11,26 @@ from app.agent.prompts import get_system_prompt
 from app.agent.state import AgentState
 from app.registries.tool_registry import get_local_tools
 from app.services.llm_service import get_llm
+
+logger = logging.getLogger(__name__)
+
+
+def _merge_backend_tools(primary: list, extra: list | None) -> list:
+    """Une tools de backend evitando NOMES duplicados. As `primary` (genéricas + domínio)
+    têm precedência; qualquer `extra` (ex.: MCP) com nome colidente é descartada e logada —
+    impede que um servidor MCP sombreie/duplique uma tool de backend confiável (ex.:
+    `create_reservation`). Também deduplica entre as próprias `extra`.
+    """
+    names = {t.name for t in primary}
+    merged = list(primary)
+    for tool in extra or []:
+        if tool.name in names:
+            logger.warning("Tool '%s' (externa/MCP) colide com tool de backend — ignorada.",
+                           tool.name)
+            continue
+        names.add(tool.name)
+        merged.append(tool)
+    return merged
 
 
 def _prompt(state: AgentState, domain_fragment: str) -> list:
@@ -61,8 +83,9 @@ def build_graph(domain: Domain, extra_tools: list | None = None) -> CompiledStat
     human-in-the-loop, quando uma tool de ação chama `interrupt()`).
     """
     model = get_llm()
-    # Tools genéricas (registry) + tools do domínio + extras (ex.: MCP). Ver app/main.py.
-    backend_tools = [*get_local_tools(), *domain.tools, *(extra_tools or [])]
+    # Tools genéricas (registry) + tools do domínio + extras (ex.: MCP), com dedup de nomes
+    # (backend confiável vence). Ver app/main.py e `_merge_backend_tools`.
+    backend_tools = _merge_backend_tools([*get_local_tools(), *domain.tools], extra_tools)
     backend_names = {t.name for t in backend_tools}
 
     async def agent_node(state: AgentState) -> dict:

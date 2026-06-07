@@ -15,7 +15,7 @@ from app.errors import describe_error, error_hint
 from app.middleware import configure_middlewares
 from app.routers import agent as agent_router
 from app.routers import health as health_router
-from app.services.mcp_service import get_mcp_tools
+from app.services.mcp_service import general_mcp_servers, get_mcp_tools, merge_servers
 
 # Uvicorn configura apenas seus próprios loggers (uvicorn.*) e não toca no root.
 # Sem isso, logger.info() de código da aplicação é silenciado (root em WARNING).
@@ -29,17 +29,19 @@ logger = logging.getLogger(__name__)
 # Lifespan — inicialização assíncrona dos recursos (padrão oficial FastAPI).
 # Composition root: monta o engine genérico com o `DOMAIN` escolhido (único lugar que
 # conhece engine + domínio + AG-UI). As tools MCP (`get_mcp_tools`) exigem setup async;
-# aqui são carregadas (vazio por enquanto) e mescladas no grafo. O agente fica em
-# `app.state.agent`; as dicas de UI do domínio em `app.state.ui_hints` (entregues ao
-# front via evento CUSTOM no router do agente).
+# os servidores gerais (mcp.json da raiz) são unidos aos do domínio (`DOMAIN.mcp_servers`)
+# e carregados com isolamento de falha por servidor. O agente fica em `app.state.agent`;
+# as dicas de UI do domínio em `app.state.ui_hints` (entregues ao front via CUSTOM).
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    mcp_tools = await get_mcp_tools()
+    mcp_servers = merge_servers(general_mcp_servers(), DOMAIN.mcp_servers)
+    mcp_tools = await get_mcp_tools(mcp_servers)
     graph = build_graph(DOMAIN, extra_tools=mcp_tools)
     app.state.agent = LangGraphAgent(name="private-agent", graph=graph)
     app.state.ui_hints = DOMAIN.ui_hints
-    logger.info("Agente AG-UI inicializado. Domínio=%s, MCP tools=%d", DOMAIN.name, len(mcp_tools))
+    logger.info("Agente AG-UI inicializado. Domínio=%s, MCP servers=%d, tools=%d",
+                DOMAIN.name, len(mcp_servers), len(mcp_tools))
     logger.info("AG_UI_STREAM_RAW_EVENTS=%s", settings.ag_ui_stream_raw_events)
     yield
 

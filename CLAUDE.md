@@ -73,7 +73,7 @@ Negócio isolado de infraestrutura; cada camada conhece as outras só por contra
 - **Engine genérico** (`app/agent/`): grafo ReAct (LangGraph puro), recebe um `Domain` por
   injeção; **nunca importa o domínio**.
 - **Contrato `Domain`** (`app/agent/domain.py`): dataclass com `tools`, `state_schema`,
-  `prompt`, `predict_state`, `ui_hints`.
+  `prompt`, `predict_state`, `ui_hints`, `mcp_servers`.
 - **Domínio plugável** (`app/domain/<nome>/`): o plug de negócio; hoje
   `app/domain/restaurant/` exporta `DOMAIN`. **Trocar de domínio = 1 import no `main.py`.**
 - **Capabilities genéricas** (`app/tools/`, `app/registries/`, `app/services/`) +
@@ -105,10 +105,12 @@ GET  /health      →  {"status":"ok"}
 **Estrutura (FastAPI):** `app/main.py` é o **composition root** — cria o
 `FastAPI(lifespan=...)`, chama `configure_middlewares(app)` e inclui os routers. É o **único**
 lugar que conhece engine + domínio: importa `DOMAIN` (`from app.domain.restaurant import
-DOMAIN`). **Lifespan** (padrão oficial p/ recursos async): carrega as tools MCP
-(`get_mcp_tools()`, vazio por enquanto), faz `build_graph(DOMAIN, extra_tools=mcp_tools)`,
-guarda o agente em **`app.state.agent`** e as dicas de UI do domínio em
-**`app.state.ui_hints`** (`DOMAIN.ui_hints`, entregues ao front pelo router do agente).
+DOMAIN`). **Lifespan** (padrão oficial p/ recursos async): une os servidores MCP gerais
+(`general_mcp_servers()`, da raiz) com os do domínio (`DOMAIN.mcp_servers`) via
+`merge_servers(...)`, carrega as tools (`get_mcp_tools(servers)`, com isolamento de falha por
+servidor), faz `build_graph(DOMAIN, extra_tools=mcp_tools)`, guarda o agente em
+**`app.state.agent`** e as dicas de UI do domínio em **`app.state.ui_hints`**
+(`DOMAIN.ui_hints`, entregues ao front pelo router do agente).
 
 - `app/routers/agent.py` (`APIRouter`): `POST /agent` replica os **primitivos oficiais**
   (`request.app.state.agent.clone().run(input)` + `EventEncoder`) com um **wrap fino de erro**
@@ -125,10 +127,14 @@ guarda o agente em **`app.state.agent`** e as dicas de UI do domínio em
 - Os `@app.exception_handler` (validação/Exception) ficam em `main.py`. O `StaticFiles` é
   montado em `/` **por último** para não capturar `/agent`/`/health`.
 - **MCP** (`app/services/mcp_service.py`): scaffold oficial via `MultiServerMCPClient`
-  (`langchain-mcp-adapters`). Os servidores vêm de **`mcp.json`** na raiz (convenção
-  `mcpServers`), hoje **vazio** → `get_mcp_tools()` retorna `[]`. Para habilitar, adicione
-  servidores em `mcp.json` (sem mexer em código); as tools entram no grafo por
-  `build_graph(DOMAIN, extra_tools=...)`.
+  (`langchain-mcp-adapters`). **Duas origens** de servidores (convenção `mcpServers`),
+  unidas no lifespan: **gerais** (`mcp.json` na raiz, capabilities sem domínio) e **de
+  domínio** (`app/domain/<dominio>/mcp.json` → `Domain.mcp_servers`, viajam com o plug).
+  Ambas **vazias** por padrão → `get_mcp_tools()` retorna `[]`. Funções: `load_mcp_servers(path)`,
+  `general_mcp_servers()`, `merge_servers(*dicts)` (colisão de nome de servidor → 1º vence,
+  com aviso) e `get_mcp_tools(servers)` (**isola falha por servidor**: um servidor com erro é
+  logado e pulado, não derruba o startup). As tools entram no grafo por
+  `build_graph(DOMAIN, extra_tools=...)`, que **deduplica nomes** (backend confiável vence).
 
 ### LangGraph graph (`app/agent/graph.py`)
 
@@ -140,10 +146,14 @@ em runtime e executadas no navegador). Estrutura:
 `build_graph(domain: Domain, extra_tools=None)` é **genérico/injetado** — recebe o `Domain`
 (ver `app/agent/domain.py`) e nunca importa o negócio. Estrutura:
 
+- Tools de backend = `_merge_backend_tools([*get_local_tools(), *domain.tools], extra_tools)`:
+  genéricas + domínio (autoritativas) + `extra_tools` (MCP), com **dedup de nomes** — uma tool
+  externa/MCP colidente é descartada e logada (o backend confiável vence; protege contra
+  sombreamento, ex.: um MCP expondo `create_reservation`).
 - Nó `agent` (async): monta `_prompt(state, domain.prompt)` (system prompt genérico +
-  fragmento do domínio + `messages`) e vincula ao LLM **as tools de backend
-  (`get_local_tools()` genéricas + `domain.tools`) + os schemas das tools de frontend**.
-  Estes vêm de `state["tools"]` (a lib `ag_ui_langgraph` escreve ali as tools do
+  fragmento do domínio + `messages`) e vincula ao LLM **as tools de backend + os schemas das
+  tools de frontend**. Estes vêm de `state["tools"]` (a lib `ag_ui_langgraph` escreve ali as
+  tools do
   `RunAgentInput.tools`), convertidos por `_frontend_tool_schemas(...)` para
   `{"type":"function","function":{...}}` — excluindo nomes que colidam com tools de
   backend (o backend vence).
@@ -328,7 +338,7 @@ tools de **backend** (efeito/dado server-side, executadas no nó `tools`).
   `TOOL_CALL_ARGS`** — com Gemini (args inteiros) é no-op, sem prejuízo (estado via snapshot).
 - **Tool de frontend** (executada no **navegador**, não no back): NÃO crie `@tool` no
   back. As tools de UI genéricas já existem em `web/frontend-tools.js` (`present_cards`/
-  `present_options`/`present_buttons`/`confirm_dialog`); o agente as usa passando os dados do
+  `present_options`/`present_buttons`/`present_number`/`confirm_dialog`); o agente as usa passando os dados do
   domínio. Para
   um novo widget, adicione-o a `web/ui-components.js` e exponha uma tool em
   `frontend-tools.js`. O `app.js` anuncia em runtime e o grafo roteia de volta ao cliente.
@@ -337,8 +347,9 @@ tools de **backend** (efeito/dado server-side, executadas no nó `tools`).
 
 1. Crie `app/domain/<novo>/` com: `tools.py` (`@tool`s de backend), `state.py` (subclasse de
    `AgentState` com as chaves do domínio), `prompt.md` (papel/fluxos), `ui_hints.py` (ícones/
-   títulos do resumo) e `__init__.py` exportando `DOMAIN = Domain(name, tools, state_schema,
-   prompt, predict_state, ui_hints)`.
+   títulos do resumo), **`mcp.json` opcional** (servidores MCP do domínio; carregado por
+   `load_mcp_servers(...)`) e `__init__.py` exportando `DOMAIN = Domain(name, tools,
+   state_schema, prompt, predict_state, ui_hints, mcp_servers)`.
 2. Em `app/main.py`, troque o import por `from app.domain.<novo> import DOMAIN`.
 
 Engine, registry genérico, adaptador AG-UI e o front **não mudam**. As dicas de UI fluem ao
@@ -403,8 +414,10 @@ adicionar/alterar uma tool, atualize a docstring** (não o `system.md`).
 
 ## Segurança
 
-Mitigações implementadas e limitações **conhecidas/aceitas** (sem auth, por escolha — não
-expor publicamente sem adicionar auth + rate-limit).
+Mitigações implementadas e limitações **conhecidas/aceitas**. **Auth fica de fora por
+escolha**: este é um projeto **base** — autenticação/autorização e rate-limit são
+responsabilidade de quem consome a base (gateway/proxy ou middleware próprio). Não expor
+publicamente sem auth.
 
 Implementado:
 - **XSS:** `markdown.js` e `ui-components.js` escapam todo conteúdo controlado pelo
@@ -416,15 +429,19 @@ Implementado:
   (`error_hint`).
 - **Limite de corpo:** `MaxBodySizeMiddleware` (ASGI puro, não bufferiza o SSE) recusa POST
   acima de `AG_UI_MAX_BODY_BYTES` (413).
+- **MCP resiliente:** `get_mcp_tools` isola falha por servidor (um servidor com erro é logado
+  e pulado, não derruba o startup); `_merge_backend_tools` impede que uma tool MCP sombreie/
+  duplique uma tool de backend confiável (dedup por nome, backend vence).
 - Sem `eval/exec/subprocess/pickle`; `math` é AST-safe; `.env` no `.gitignore`.
 
-Limitações aceitas (precisam de auth/infra antes de produção):
+Limitações aceitas (precisam de auth/infra antes de produção, a cargo do consumidor):
 - **Sem auth + CORS `*`** → qualquer origem aciona o agente (custo/abuso). Restrinja via
-  `AG_UI_CORS_ORIGINS`; adicione auth/rate-limit para produção.
+  `AG_UI_CORS_ORIGINS`; adicione auth/rate-limit ao consumir a base.
 - **`MemorySaver`** é in-memory e ilimitado (cresce por `threadId`) — só demo.
 - **`threadId` sem isolamento** (quem souber um, continua/lê a conversa).
-- **`web_search`/`web_extract`** trazem conteúdo não-confiável (prompt injection); blast
-  radius limitado (sem tools destrutivas; fetch do extract é da Tavily → sem SSRF local).
+- **`web_search`/`web_extract` e tools MCP** trazem conteúdo não-confiável (prompt injection);
+  blast radius limitado (sem tools destrutivas; fetch do extract é da Tavily → sem SSRF local).
+  Vetar quais servidores MCP habilitar é responsabilidade de quem configura.
 - **Chamadas mistas backend+frontend** numa mesma mensagem do modelo são caso de borda
   (assume-se 1 tool call por passo).
 
