@@ -10,8 +10,6 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.1-flash-lite"
 
-    tavily_api_key: str = ""
-
     ag_ui_stream_raw_events: bool = True
 
     # Origens permitidas via CORS (separadas por vírgula). "*" libera todas.

@@ -145,7 +145,7 @@ app/
                        Domain) · prompts/ (system.md genérico + composição)
   registries/        tool_registry.py (só capabilities genéricas: calendário + math + web)
   services/          llm_service.py (Gemini) · mcp_service.py (load/merge/get + isolamento)
-  tools/             calendar · math · web_search (Tavily, opcional) — genéricas, sem domínio
+  tools/             calendar · math — capabilities genéricas, sem domínio
   domain/            PLUGS de negócio (cada um exporta um Domain)
     restaurant/      __init__.py (DOMAIN) · tools.py · state.py · ui_hints.py · prompt.md · mcp.json
 web/                 app.js + frontend-tools.js + ui-components.js + markdown.js + escape.js + estáticos
@@ -163,7 +163,6 @@ Copie `.env.example` para `.env`.
 |---|---|---|
 | `GEMINI_API_KEY` | — | **Obrigatória** (provedor Gemini) |
 | `GEMINI_MODEL` | `gemini-3.1-flash-lite` | Nome do modelo |
-| `TAVILY_API_KEY` | — | Habilita as tools de busca web (`web_search`/`web_extract`) |
 | `AG_UI_STREAM_RAW_EVENTS` | `true` | Se `false`, omite eventos `RAW` do SSE |
 | `AG_UI_CORS_ORIGINS` | `*` | Origens permitidas via CORS (CSV). `*` libera todas |
 | `AG_UI_MAX_BODY_BYTES` | `2000000` | Tamanho máx. do corpo (bytes). `0` desabilita |
@@ -263,9 +262,9 @@ entradas (sem mexer em código):
 - **Dedup de nomes:** uma tool MCP cujo nome colida com uma tool de backend confiável é
   **descartada** (o backend vence) — evita sombreamento/duplicação. Em colisão de nome de
   *servidor* entre gerais e de domínio, o geral tem precedência (com aviso no log).
-- **Conteúdo não-confiável:** tools MCP podem trazer conteúdo arbitrário (prompt injection),
-  como a busca web. Não há tools destrutivas por padrão (blast radius limitado), mas **vetar
-  quais servidores MCP habilitar é responsabilidade de quem configura**.
+- **Conteúdo não-confiável:** tools MCP podem trazer conteúdo arbitrário (prompt injection).
+  Não há tools destrutivas por padrão (blast radius limitado), mas **vetar quais servidores
+  MCP habilitar é responsabilidade de quem configura**.
 
 ---
 
@@ -313,7 +312,7 @@ Mitigações implementadas:
 
 Limitações conhecidas (requerem auth/infra para produção, a cargo do consumidor): sem auth +
 CORS `*` permite qualquer origem acionar o agente; `MemorySaver` é in-memory e ilimitado (por
-`threadId`); `threadId` não tem isolamento; conteúdo de busca web/MCP é não-confiável (prompt
+`threadId`); `threadId` não tem isolamento; conteúdo de tools MCP é não-confiável (prompt
 injection, com blast radius limitado — sem tools destrutivas e sem SSRF local).
 
 ---

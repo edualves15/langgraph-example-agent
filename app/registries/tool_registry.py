@@ -1,6 +1,5 @@
 from langchain_core.tools import BaseTool
 
-from app.config import settings
 from app.tools.calendar_tools import (
     add_business_days,
     calculate_date_difference,
@@ -26,15 +25,10 @@ CALENDAR_TOOLS = [
 
 
 def get_local_tools() -> list[BaseTool]:
-    """Tools de backend **genéricas** (sem domínio): calendário, matemática e, quando
-    `TAVILY_API_KEY` está setada, busca web. As tools do domínio NÃO vêm daqui — entram
-    no grafo via `Domain.tools` (ver `build_graph(domain, ...)` em `app/agent/graph.py`).
+    """Tools de backend **genéricas** (sem domínio): calendário e matemática. As tools do
+    domínio NÃO vêm daqui — entram no grafo via `Domain.tools` (ver `build_graph(domain,
+    ...)` em `app/agent/graph.py`). Capacidades externas (ex.: busca web) ficam a cargo do
+    consumidor, via servidores MCP em `mcp.json` (ver `app/services/mcp_service.py`).
     """
-    tools: list[BaseTool] = [
-        *CALENDAR_TOOLS,
-        calculate_math_expression,
-    ]
-    if settings.tavily_api_key:
-        from app.tools.web_search import web_search, web_extract
-        tools += [web_search, web_extract]
-    return tools
+    return [*CALENDAR_TOOLS, calculate_math_expression]
+

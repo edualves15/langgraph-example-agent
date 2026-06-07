@@ -356,7 +356,8 @@ tools de **backend** (efeito/dado server-side, executadas no nó `tools`).
 Engine, registry genérico, adaptador AG-UI e o front **não mudam**. As dicas de UI fluem ao
 front pelo evento `CUSTOM`/`ui_hints`; sem `ui_hints`, o front fica 100% genérico.
 
-`web_search` / `web_extract` (Tavily) são carregadas apenas quando `TAVILY_API_KEY` está setada.
+Capacidades externas (ex.: busca web) **não** são embutidas — ficam a cargo do consumidor via
+servidores MCP (`mcp.json` geral ou `Domain.mcp_servers`); ver **MCP**.
 
 ### LLM provider
 
@@ -392,7 +393,7 @@ Input:
                                  InjectedState/InjectedToolCallId)
 Returns <forma do retorno>.   (+ "Good inputs:" / exemplos quando útil)
 ```
-Tavily (`web_search`/`web_extract`) usa `description=` para seguir o mesmo padrão. **Ao
+Tools sem docstring (ex.: vindas de MCP) devem trazer `description=` no mesmo padrão. **Ao
 adicionar/alterar uma tool, atualize a docstring** (não o `system.md`).
 
 ### Erros (resiliência)
@@ -447,8 +448,8 @@ Limitações aceitas (precisam de auth/infra antes de produção, a cargo do con
   `AG_UI_CORS_ORIGINS`; adicione auth/rate-limit ao consumir a base.
 - **`MemorySaver`** é in-memory e ilimitado (cresce por `threadId`) — só demo.
 - **`threadId` sem isolamento** (quem souber um, continua/lê a conversa).
-- **`web_search`/`web_extract` e tools MCP** trazem conteúdo não-confiável (prompt injection);
-  blast radius limitado (sem tools destrutivas; fetch do extract é da Tavily → sem SSRF local).
+- **Tools MCP** (se habilitadas) trazem conteúdo não-confiável (prompt injection); blast radius
+  limitado (sem tools destrutivas por padrão). Vetar quais servidores habilitar é do consumidor.
   Vetar quais servidores MCP habilitar é responsabilidade de quem configura.
 - **Chamadas mistas backend+frontend** numa mesma mensagem do modelo são caso de borda
   (assume-se 1 tool call por passo).
@@ -461,7 +462,6 @@ Copy `.env.example` to `.env`. Required keys:
 |---|---|---|
 | `GEMINI_API_KEY` | — | Required (Gemini provider) |
 | `GEMINI_MODEL` | `gemini-3.1-flash-lite` | Model name |
-| `TAVILY_API_KEY` | — | Enables the Tavily tools (`tavily_search` / `tavily_extract`) |
 | `AG_UI_STREAM_RAW_EVENTS` | `true` | When `false`, omits `RAW` events (LangChain callback passthrough) from the SSE stream |
 | `AG_UI_CORS_ORIGINS` | `*` | Origens permitidas via CORS (CSV). `*` libera todas; com origens explícitas, credenciais são habilitadas. |
 | `AG_UI_MAX_BODY_BYTES` | `2000000` | Tamanho máximo do corpo de uma requisição (bytes). `0` desabilita o limite. |
