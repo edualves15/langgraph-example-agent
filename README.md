@@ -148,7 +148,7 @@ app/
   tools/             calendar · math · web_search (Tavily, opcional) — genéricas, sem domínio
   domain/            PLUGS de negócio (cada um exporta um Domain)
     restaurant/      __init__.py (DOMAIN) · tools.py · state.py · ui_hints.py · prompt.md · mcp.json
-web/                 app.js + frontend-tools.js + ui-components.js + markdown.js + estáticos
+web/                 app.js + frontend-tools.js + ui-components.js + markdown.js + escape.js + estáticos
 tests/               unit + integração (servidor)
 mcp.json             servidores MCP GERAIS (mcpServers), vazio por padrão
 ```
@@ -296,13 +296,17 @@ wrap de `RUN_ERROR`, filtro de `RAW`).
 
 Mitigações implementadas:
 
-- **Anti-XSS:** Markdown e componentes de UI escapam todo conteúdo do agente e sanitizam
-  URLs (só http/https/mailto).
+- **Anti-XSS:** escape de HTML único em `web/escape.js` (escapa `&<>"` — texto **e**
+  atributos), importado por `app.js`/`ui-components.js`/`markdown.js`; URLs sanitizadas (só
+  http/https/mailto). `data-icon-size` validado antes de entrar no SVG.
 - **DoS de potência:** `math_tools` recusa `**` de magnitude descomunal (ex.: `9**9**9`).
 - **Sem vazamento de erro:** o cliente recebe mensagens genéricas (`describe_error`); o
   detalhe vai só ao log (`error_hint`).
 - **Limite de corpo:** `MaxBodySizeMiddleware` (ASGI, não bufferiza o SSE) recusa POST acima
-  de `AG_UI_MAX_BODY_BYTES` (413).
+  de `AG_UI_MAX_BODY_BYTES` (413) — por `content-length` e contando bytes em streaming
+  (cobre `transfer-encoding: chunked`).
+- **Resiliência do stream:** o `/agent` aborta limpo no disconnect do cliente
+  (`asyncio.CancelledError`); o loop de frontend tools tem teto de rodadas.
 - **MCP resiliente:** falha de um servidor é isolada (logada e pulada); tools MCP não podem
   sombrear tools de backend confiáveis (dedup de nomes). Ver [MCP](#mcp-model-context-protocol).
 - Sem `eval/exec/subprocess`; `math` é AST-safe; `.env` é gitignored.

@@ -276,7 +276,8 @@ Página estática servida pelo FastAPI, sem build step:
   Subconjunto prático/robusto (~GFM): headings 1–6, bold/itálico/bold-itálico,
   strikethrough, code inline/fenced, blockquote (multilinha/aninhado), listas
   ordenadas/não-ordenadas/aninhadas, links, imagens, tabelas, hr, quebras. Escapa todo
-  texto e sanitiza URLs (só http/https/mailto/relativas) — anti-XSS. API:
+  texto (via `escape.js` compartilhado) e sanitiza URLs (só http/https/mailto/relativas) —
+  anti-XSS. API:
   `renderMarkdown(src, { correct })`; `correct` (default `LENIENT=true`) liga um pré-passo
   corretor de deslizes do agente (espaço após `#`, etc.). Passe `correct:false` para
   render estrito.
@@ -420,15 +421,22 @@ responsabilidade de quem consome a base (gateway/proxy ou middleware próprio). 
 publicamente sem auth.
 
 Implementado:
-- **XSS:** `markdown.js` e `ui-components.js` escapam todo conteúdo controlado pelo
-  agente e sanitizam URLs (só http/https/mailto; bloqueia `javascript:`/`data:`, inclusive
-  ofuscado). `app.js` insere dados via `escapeHtml`/`textContent`.
+- **XSS:** escape de HTML compartilhado em **`web/escape.js`** (`escapeHtml`, escapa
+  `&<>"`, fonte única importada por `app.js`/`ui-components.js`/`markdown.js`) — neutraliza
+  conteúdo do agente em texto **e em atributos** (aspas). `markdown.js` sanitiza URLs (só
+  http/https/mailto; bloqueia `javascript:`/`data:`, inclusive ofuscado) e escapa antes das
+  regexes de link/imagem (título/alt já saem inertes). `initIcons` valida `data-icon-size`
+  (`/^[\d.]+(px|em|rem|%|pt)?$/`) antes de interpolar no SVG.
 - **DoS de potência:** `math_tools._guard_pow` recusa `**` cujo resultado teria magnitude
   descomunal (ex.: `9**9**9`), sem afetar matemática normal.
 - **Info-disclosure:** erros ao cliente são genéricos (`describe_error`); detalhe só no log
   (`error_hint`).
 - **Limite de corpo:** `MaxBodySizeMiddleware` (ASGI puro, não bufferiza o SSE) recusa POST
-  acima de `AG_UI_MAX_BODY_BYTES` (413).
+  acima de `AG_UI_MAX_BODY_BYTES` (413) — por `content-length` **e** contando bytes em
+  streaming (cobre `transfer-encoding: chunked` sem header).
+- **Resiliência do stream:** o gerador do `/agent` trata `asyncio.CancelledError` (disconnect
+  do cliente) abortando limpo sem emitir `RUN_ERROR`; o loop de frontend tools no `app.js`
+  tem teto de rodadas (`MAX_FT_ROUNDS`) contra recursão sem fim.
 - **MCP resiliente:** `get_mcp_tools` isola falha por servidor (um servidor com erro é logado
   e pulado, não derruba o startup); `_merge_backend_tools` impede que uma tool MCP sombreie/
   duplique uma tool de backend confiável (dedup por nome, backend vence).

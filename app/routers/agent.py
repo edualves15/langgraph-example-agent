@@ -6,6 +6,7 @@ Replica os primitivos oficiais (`agent.clone().run(input)` + `EventEncoder`), ma
 de `request.app.state.agent` (criado no lifespan, ver `app/main.py`).
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 
@@ -47,6 +48,11 @@ async def agent_endpoint(input_data: RunAgentInput, request: Request) -> Streami
                                 type=EventType.CUSTOM, name="ui_hints", value=ui_hints
                             )
                         )
+        except asyncio.CancelledError:
+            # Cliente desconectou no meio do stream: aborta limpo (não emite RUN_ERROR)
+            # e propaga o cancelamento para liberar o run subjacente.
+            logger.info("Cliente desconectou durante a execução do agente; abortando.")
+            raise
         except Exception as exc:  # resiliência: nenhuma exceção escapa do stream
             # Detalhe (tipo/1ª linha) só no log; cliente recebe mensagem genérica/segura.
             logger.error("Falha durante a execução do agente: %s", error_hint(exc))

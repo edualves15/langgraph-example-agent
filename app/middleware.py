@@ -11,34 +11,60 @@ from app.config import settings
 class MaxBodySizeMiddleware:
     """Middleware ASGI **puro** que recusa corpos grandes (DoS de memória).
 
-    Checa o header `content-length` ANTES de o app ler o corpo e responde **413** se
-    exceder `max_bytes`. Para requisições válidas, **delega intacto** — não envolve a
-    resposta, então o streaming SSE do `/agent` é preservado. (Requisições com
-    transfer-encoding chunked sem `content-length` não são limitadas por este check.)
+    Duas linhas de defesa, ANTES de o app processar o corpo:
+    1. **fast-path**: se o header `content-length` excede `max_bytes`, responde **413**.
+    2. **streaming**: envolve `receive` e soma os bytes do corpo à medida que chegam;
+       ao exceder, responde **413** e sinaliza `http.disconnect` ao app — cobrindo
+       requisições `transfer-encoding: chunked` (sem `content-length`).
+
+    Só o CORPO da requisição é envolvido; o `send` (resposta) é intacto, preservando o
+    streaming SSE do `/agent`.
     """
 
     def __init__(self, app, max_bytes: int) -> None:
         self.app = app
         self.max_bytes = max_bytes
 
+    @staticmethod
+    async def _reject(send) -> None:
+        body = json.dumps({"detail": "Requisição grande demais."}).encode()
+        await send({
+            "type": "http.response.start",
+            "status": 413,
+            "headers": [(b"content-type", b"application/json")],
+        })
+        await send({"type": "http.response.body", "body": body})
+
     async def __call__(self, scope, receive, send) -> None:
-        if scope["type"] == "http" and self.max_bytes > 0:
-            cl = dict(scope.get("headers") or {}).get(b"content-length")
-            if cl is not None:
-                try:
-                    too_big = int(cl) > self.max_bytes
-                except ValueError:
-                    too_big = False
-                if too_big:
-                    body = json.dumps({"detail": "Requisição grande demais."}).encode()
-                    await send({
-                        "type": "http.response.start",
-                        "status": 413,
-                        "headers": [(b"content-type", b"application/json")],
-                    })
-                    await send({"type": "http.response.body", "body": body})
-                    return
-        await self.app(scope, receive, send)
+        if scope["type"] != "http" or self.max_bytes <= 0:
+            await self.app(scope, receive, send)
+            return
+
+        cl = dict(scope.get("headers") or []).get(b"content-length")
+        if cl is not None:
+            try:
+                too_big = int(cl) > self.max_bytes
+            except ValueError:
+                too_big = False
+            if too_big:
+                await self._reject(send)
+                return
+
+        received = 0
+        rejected = False
+
+        async def limited_receive():
+            nonlocal received, rejected
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self.max_bytes and not rejected:
+                    rejected = True
+                    await self._reject(send)
+                    return {"type": "http.disconnect"}
+            return message
+
+        await self.app(scope, limited_receive, send)
 
 
 def configure_middlewares(app: FastAPI) -> None:

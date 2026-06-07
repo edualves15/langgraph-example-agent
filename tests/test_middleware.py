@@ -57,3 +57,67 @@ async def test_disabled_when_limit_zero():
     sent = await _drive(mw, content_length=10_000_000)
     assert inner.called is True
     assert sent[0]["status"] == 200
+
+
+class _BodyReader:
+    """App ASGI que DRENA o corpo via receive (como um app real lendo o body)."""
+
+    def __init__(self):
+        self.called = False
+        self.saw_disconnect = False
+
+    async def __call__(self, scope, receive, send):
+        self.called = True
+        while True:
+            msg = await receive()
+            if msg["type"] == "http.disconnect":
+                self.saw_disconnect = True
+                return
+            if not msg.get("more_body"):
+                break
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+
+@pytest.mark.asyncio
+async def test_rejects_oversized_chunked_body():
+    # Sem content-length (transfer-encoding chunked): o limite é aplicado em streaming.
+    inner = _BodyReader()
+    mw = MaxBodySizeMiddleware(inner, max_bytes=100)
+    sent = []
+    chunks = iter([
+        {"type": "http.request", "body": b"x" * 60, "more_body": True},
+        {"type": "http.request", "body": b"x" * 60, "more_body": True},
+        {"type": "http.request", "body": b"", "more_body": False},
+    ])
+
+    async def receive():
+        return next(chunks)
+
+    async def send(msg):
+        sent.append(msg)
+
+    await mw({"type": "http", "headers": []}, receive, send)
+    assert any(m.get("status") == 413 for m in sent)
+    assert inner.saw_disconnect is True  # app foi sinalizado a parar
+
+
+@pytest.mark.asyncio
+async def test_allows_small_chunked_body():
+    inner = _BodyReader()
+    mw = MaxBodySizeMiddleware(inner, max_bytes=100)
+    sent = []
+    chunks = iter([
+        {"type": "http.request", "body": b"x" * 30, "more_body": True},
+        {"type": "http.request", "body": b"x" * 30, "more_body": False},
+    ])
+
+    async def receive():
+        return next(chunks)
+
+    async def send(msg):
+        sent.append(msg)
+
+    await mw({"type": "http", "headers": []}, receive, send)
+    assert inner.called is True
+    assert sent[0]["status"] == 200
