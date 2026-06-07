@@ -120,6 +120,14 @@ servidor), faz `build_graph(DOMAIN, extra_tools=mcp_tools)`, guarda o agente em
   (canal oficial AG-UI, sem HTTP paralelo) — o front genérico aplica os ícones/títulos do
   resumo de estado. Não emite nada se `ui_hints` for vazio.
 - `app/routers/health.py` (`APIRouter`): `GET /health`.
+- **DTOs & OpenAPI** (`app/schemas.py`): respostas tipadas com Pydantic — `ErrorResponse`,
+  `HealthResponse`, `AgentInfo`, `AgentHealthResponse` (camada de servidor, genérica). Health
+  usa `response_model`; `/agent` documenta `responses` (200 `text/event-stream` + 413/422/500
+  `ErrorResponse`) e acessa o agente via helper **tipado** `get_agent(request)`. O `app.openapi`
+  é **curado** em `main.py` (`_custom_openapi`): a seção *Schemas* do Swagger expõe **só os
+  DTOs** (e aninhados) — os tipos do protocolo (`RunAgentInput` e aninhados) são removidos e o
+  corpo do `/agent` é descrito em prosa + exemplo (segue validado em runtime). `/docs`,`/redoc`,
+  `/openapi.json` ligáveis por `APP_ENABLE_DOCS` (`_docs_kwargs`).
 - `app/middleware.py` (`configure_middlewares`): **CORS** (`CORSMiddleware`) — permite que
   qualquer frontend AG-UI de outra origem consuma o agente. Origens via `AG_UI_CORS_ORIGINS`
   (default `*`); conforme a spec, credenciais só ligam com origens explícitas (wildcard `*` é
@@ -465,3 +473,4 @@ Copy `.env.example` to `.env`. Required keys:
 | `AG_UI_STREAM_RAW_EVENTS` | `true` | When `false`, omits `RAW` events (LangChain callback passthrough) from the SSE stream |
 | `AG_UI_CORS_ORIGINS` | `*` | Origens permitidas via CORS (CSV). `*` libera todas; com origens explícitas, credenciais são habilitadas. |
 | `AG_UI_MAX_BODY_BYTES` | `2000000` | Tamanho máximo do corpo de uma requisição (bytes). `0` desabilita o limite. |
+| `APP_ENABLE_DOCS` | `true` | Quando `false`, desliga `/docs`, `/redoc` e `/openapi.json` (recomendado em produção). Config de APLICAÇÃO — sem prefixo `AG_UI_`. |

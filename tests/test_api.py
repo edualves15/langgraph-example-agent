@@ -80,6 +80,40 @@ def test_agent_run_error_wrap_is_safe(client):
     assert "/internal/secret/path" not in r.text
 
 
+def test_openapi_schemas_only_dtos(client):
+    # A seção Schemas do Swagger expõe SÓ os DTOs da app (+ aninhados), sem tipos AG-UI.
+    spec = client.get("/openapi.json").json()
+    assert set(spec["components"]["schemas"]) == {
+        "ErrorResponse", "HealthResponse", "AgentHealthResponse", "AgentInfo",
+    }
+    # Sem $ref pendente para schemas removidos (ex.: RunAgentInput).
+    import json
+    assert "#/components/schemas/RunAgentInput" not in json.dumps(spec)
+
+
+def test_openapi_agent_operation_documented(client):
+    post = client.get("/openapi.json").json()["paths"]["/agent"]["post"]
+    # 200 é só SSE; erros documentados.
+    assert list(post["responses"]["200"]["content"]) == ["text/event-stream"]
+    assert {"413", "422", "500"} <= set(post["responses"])
+    # Corpo descrito + exemplo (validação real continua via RunAgentInput).
+    body = post["requestBody"]["content"]["application/json"]
+    assert "example" in body and body["schema"]["type"] == "object"
+
+
+def test_docs_available_by_default(client):
+    assert client.get("/docs").status_code == 200
+    assert client.get("/openapi.json").status_code == 200
+
+
+def test_docs_kwargs_toggle():
+    from app.main import _docs_kwargs
+    assert _docs_kwargs(True) == {
+        "docs_url": "/docs", "redoc_url": "/redoc", "openapi_url": "/openapi.json",
+    }
+    assert _docs_kwargs(False) == {"docs_url": None, "redoc_url": None, "openapi_url": None}
+
+
 def test_raw_events_filtered_when_disabled(client, monkeypatch):
     from app.config import settings
 

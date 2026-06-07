@@ -9,29 +9,61 @@ de `request.app.state.agent` (criado no lifespan, ver `app/main.py`).
 import asyncio
 import logging
 from collections.abc import AsyncIterator
+from typing import cast
 
 from ag_ui.core import CustomEvent, EventType, RunErrorEvent
 from ag_ui.core.types import RunAgentInput
 from ag_ui.encoder import EventEncoder
+from ag_ui_langgraph import LangGraphAgent
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from app.config import settings
 from app.errors import describe_error, error_hint
+from app.schemas import AgentHealthResponse, AgentInfo, ErrorResponse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["agent"])
 
 
-@router.post("/agent")
+def get_agent(request: Request) -> LangGraphAgent:
+    """Acesso **tipado** ao agente AG-UI guardado em `app.state` (criado no lifespan)."""
+    return cast(LangGraphAgent, request.app.state.agent)
+
+
+# Respostas documentadas no OpenAPI. O 200 é um stream SSE (text/event-stream); os erros
+# usam o DTO ErrorResponse (`{"detail": "..."}`), coerente com os handlers/middleware.
+_AGENT_RESPONSES: dict = {
+    200: {
+        "description": (
+            "Stream SSE (text/event-stream) de eventos AG-UI: RUN_STARTED, "
+            "TEXT_MESSAGE_* , TOOL_CALL_* , STATE_* , CUSTOM (ex.: ui_hints), "
+            "RUN_FINISHED/RUN_ERROR e RAW (omitível via AG_UI_STREAM_RAW_EVENTS)."
+        ),
+        "content": {"text/event-stream": {}},
+    },
+    413: {"model": ErrorResponse, "description": "Corpo da requisição acima do limite."},
+    422: {"model": ErrorResponse, "description": "Corpo inválido (não corresponde a RunAgentInput)."},
+    500: {"model": ErrorResponse, "description": "Erro inesperado ao processar a requisição."},
+}
+
+
+@router.post(
+    "/agent",
+    summary="Executa o agente e transmite eventos AG-UI (SSE)",
+    responses=_AGENT_RESPONSES,
+)
 async def agent_endpoint(input_data: RunAgentInput, request: Request) -> StreamingResponse:
+    """Roda o agente para um `RunAgentInput` (protocolo AG-UI) e devolve o resultado como
+    um stream **SSE** de eventos AG-UI. Erros são emitidos como `RUN_ERROR` dentro do
+    stream; falhas pré-stream usam o formato `ErrorResponse`."""
     encoder = EventEncoder(accept=request.headers.get("accept"))
-    request_agent = request.app.state.agent.clone()  # estado isolado por requisição (oficial)
+    request_agent = get_agent(request).clone()  # estado isolado por requisição (oficial)
     # Dicas de apresentação do domínio (ícones/títulos do resumo), entregues ao front
     # genérico pelo canal oficial AG-UI (evento CUSTOM), logo após o RUN_STARTED — sem
     # canal HTTP paralelo. O front (web/app.js) trata `name="ui_hints"` genericamente.
-    ui_hints = getattr(request.app.state, "ui_hints", None)
+    ui_hints: dict | None = getattr(request.app.state, "ui_hints", None)
 
     async def event_generator() -> AsyncIterator[str]:
         hints_sent = False
@@ -67,6 +99,11 @@ async def agent_endpoint(input_data: RunAgentInput, request: Request) -> Streami
     return StreamingResponse(event_generator(), media_type=encoder.get_content_type())
 
 
-@router.get("/agent/health")
-def agent_health(request: Request) -> dict:
-    return {"status": "ok", "agent": {"name": request.app.state.agent.name}}
+@router.get(
+    "/agent/health",
+    response_model=AgentHealthResponse,
+    summary="Liveness do agente",
+)
+def agent_health(request: Request) -> AgentHealthResponse:
+    """Status do subsistema do agente, com o nome do agente ativo."""
+    return AgentHealthResponse(agent=AgentInfo(name=get_agent(request).name))

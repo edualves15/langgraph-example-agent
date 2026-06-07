@@ -5,6 +5,7 @@ from pathlib import Path
 from ag_ui_langgraph import LangGraphAgent
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -46,7 +47,36 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="LangGraph Private Agent — AG-UI", version="0.2.0", lifespan=lifespan)
+_APP_DESCRIPTION = (
+    "Agente **LangGraph** exposto pelo protocolo oficial **AG-UI** sobre **FastAPI**.\n\n"
+    "O `POST /agent` recebe um `RunAgentInput` (protocolo AG-UI) e devolve um stream **SSE** "
+    "de eventos. A seção **Schemas** lista apenas os **DTOs** desta aplicação (respostas e "
+    "erros) — os tipos do protocolo (`RunAgentInput` e aninhados) vêm do cliente oficial "
+    "`@ag-ui/client` e não são redefinidos aqui."
+)
+
+_OPENAPI_TAGS = [
+    {"name": "agent", "description": "Execução do agente (SSE) e health do agente."},
+    {"name": "health", "description": "Health checks do servidor."},
+]
+
+
+def _docs_kwargs(enabled: bool) -> dict[str, str | None]:
+    """kwargs de docs do FastAPI: habilitadas (default) ou todas desligadas (produção)."""
+    if enabled:
+        return {"docs_url": "/docs", "redoc_url": "/redoc", "openapi_url": "/openapi.json"}
+    return {"docs_url": None, "redoc_url": None, "openapi_url": None}
+
+
+app = FastAPI(
+    title="LangGraph Private Agent — AG-UI",
+    version="0.2.0",
+    summary="Agente LangGraph sobre o protocolo oficial AG-UI (FastAPI).",
+    description=_APP_DESCRIPTION,
+    openapi_tags=_OPENAPI_TAGS,
+    lifespan=lifespan,
+    **_docs_kwargs(settings.app_enable_docs),
+)
 
 # Middleware (CORS) — isolado em app/middleware.py.
 configure_middlewares(app)
@@ -56,6 +86,73 @@ configure_middlewares(app)
 #   GET  /health                                              →  app/routers/health.py
 app.include_router(agent_router.router)
 app.include_router(health_router.router)
+
+
+# ---------------------------------------------------------------------------
+# OpenAPI curado — a seção "Schemas" do Swagger expõe SÓ os DTOs da aplicação (e seus
+# tipos aninhados), para o consumidor recriá-los facilmente. Os tipos do protocolo AG-UI
+# (`RunAgentInput` e aninhados) são removidos da seção; o corpo do `/agent` é descrito em
+# prosa + exemplo (continua validado em runtime pelo modelo oficial).
+# ---------------------------------------------------------------------------
+_DTO_SCHEMAS = {"ErrorResponse", "HealthResponse", "AgentHealthResponse", "AgentInfo"}
+
+_AGENT_REQUEST_EXAMPLE = {
+    "threadId": "t1",
+    "runId": "r1",
+    "state": {},
+    "messages": [{"id": "m1", "role": "user", "content": "Olá"}],
+    "tools": [],
+    "context": [],
+    "forwardedProps": {},
+}
+
+
+def _custom_openapi() -> dict:
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        summary=app.summary,
+        description=app.description,
+        routes=app.routes,
+        tags=app.openapi_tags,
+    )
+    # Mantém só os DTOs (e aninhados) na seção Schemas.
+    components = schema.setdefault("components", {})
+    existing = components.get("schemas", {})
+    components["schemas"] = {n: m for n, m in existing.items() if n in _DTO_SCHEMAS}
+    # O corpo do /agent referenciava RunAgentInput (removido acima): substitui por um schema
+    # autocontido + exemplo, evitando `$ref` pendente e mantendo a validação em runtime.
+    try:
+        op = schema["paths"]["/agent"]["post"]
+        # 200 é só SSE: remove o application/json default que o FastAPI mescla.
+        ok = op.get("responses", {}).get("200", {})
+        if "content" in ok:
+            ok["content"] = {"text/event-stream": ok["content"].get("text/event-stream", {})}
+        op["requestBody"] = {
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "description": (
+                            "RunAgentInput do protocolo AG-UI (camelCase): threadId, runId, "
+                            "state, messages, tools, context, forwardedProps. Normalmente "
+                            "enviado pelo cliente oficial @ag-ui/client."
+                        ),
+                    },
+                    "example": _AGENT_REQUEST_EXAMPLE,
+                }
+            },
+        }
+    except KeyError:  # rota ausente (defensivo) — não quebra a geração
+        pass
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = _custom_openapi
 
 
 # ---------------------------------------------------------------------------

@@ -59,6 +59,13 @@ curl -N -X POST http://localhost:8000/agent \
 
 Rotas: `POST /agent` (SSE) · `GET /agent/health` · `GET /health`.
 
+**Documentação da API (Swagger):** `GET /docs` (Swagger UI), `/redoc` e `/openapi.json`
+(habilitados por default; desligue em produção com `APP_ENABLE_DOCS=false`). Respostas e
+erros são modelos Pydantic tipados; a seção **Schemas** lista **apenas os DTOs desta
+aplicação** (`ErrorResponse`, `HealthResponse`, `AgentHealthResponse`, `AgentInfo`) — os
+tipos do protocolo (`RunAgentInput`) vêm do cliente oficial `@ag-ui/client` e não são
+redefinidos. O corpo do `/agent` é validado em runtime e descrito em prosa + exemplo.
+
 ---
 
 ## Arquitetura
@@ -166,6 +173,7 @@ Copie `.env.example` para `.env`.
 | `AG_UI_STREAM_RAW_EVENTS` | `true` | Se `false`, omite eventos `RAW` do SSE |
 | `AG_UI_CORS_ORIGINS` | `*` | Origens permitidas via CORS (CSV). `*` libera todas |
 | `AG_UI_MAX_BODY_BYTES` | `2000000` | Tamanho máx. do corpo (bytes). `0` desabilita |
+| `APP_ENABLE_DOCS` | `true` | Se `false`, desabilita `/docs`, `/redoc` e `/openapi.json` (recomendado em produção) |
 
 ---
 
