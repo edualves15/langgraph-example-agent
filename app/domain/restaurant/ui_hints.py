@@ -1,10 +1,6 @@
-"""Dicas de **apresentação** do domínio Restaurante para o frontend genérico.
-
-O front (`web/`) é agnóstico de domínio: não conhece nomes de chaves de estado nem
-títulos. Estes mapas são entregues a ele em runtime via evento AG-UI `CUSTOM`
-(`name="ui_hints"`, emitido em `app/routers/agent.py`) e usados pelo resumo da reserva
-(`renderSummary` em `web/app.js`). Sem eles (`{}`), o front continua 100% genérico
-(cai em rótulos humanizados / título "Resumo").
+"""Dicas de apresentação do domínio para o front genérico, entregues em runtime via evento
+AG-UI `CUSTOM` (`name="ui_hints"`, ver `app/routers/agent.py`) e usadas por `renderSummary`
+em `web/app.js`. Sem elas, o front fica 100% genérico (rótulos humanizados / título "Resumo").
 """
 
 # Ícone por chave (subcampo) de estado, exibido no resumo do fluxo ativo.

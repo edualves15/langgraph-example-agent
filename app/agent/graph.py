@@ -12,8 +12,7 @@ from app.services.llm_service import get_llm
 
 
 def _prompt(state: AgentState, domain_fragment: str) -> list:
-    """Prompt dinâmico: injeta o system prompt (genérico + domínio, com a data de hoje)
-    a cada chamada."""
+    """Prompt dinâmico (system prompt genérico + domínio, com a data de hoje) a cada chamada."""
     return [SystemMessage(content=get_system_prompt(domain_fragment)), *state["messages"]]
 
 
@@ -42,11 +41,8 @@ def _frontend_tool_schemas(tools: list[dict], exclude: set[str]) -> list[dict]:
 
 
 def build_graph(domain: Domain, extra_tools: list | None = None) -> CompiledStateGraph:
-    """Constrói o grafo (loop ReAct) genérico, parametrizado por um `Domain`.
-
-    O engine é **agnóstico de domínio**: recebe o `Domain` (tools/state/prompt/
-    predict_state) por injeção — ver `app/agent/domain.py`. Trocar de negócio = passar
-    outro `Domain` (em `app/main.py`), sem tocar neste arquivo.
+    """Constrói o grafo (loop ReAct) genérico, parametrizado por um `Domain` (injeção; ver
+    `app/agent/domain.py`). Trocar de negócio = passar outro `Domain`, sem tocar aqui.
 
     Diferente do prebuilt `create_react_agent` (cujo `ToolNode` executa **toda** tool
     call), este grafo distingue tools de **backend** (executadas no servidor) de tools

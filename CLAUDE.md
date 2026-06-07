@@ -68,25 +68,22 @@ customizados, `NarrationMeta`, nem endpoints `/chat` / `/chat/stream`.**
 
 #### Separação de camadas (regra central)
 
-O projeto isola **negócio** de **infraestrutura**. Cada camada conhece as outras só por
-contrato/protocolo:
+Negócio isolado de infraestrutura; cada camada conhece as outras só por contrato/protocolo:
 
-- **Engine genérico** (`app/agent/`): grafo ReAct (LangGraph puro). Recebe um `Domain` por
+- **Engine genérico** (`app/agent/`): grafo ReAct (LangGraph puro), recebe um `Domain` por
   injeção; **nunca importa o domínio**.
-- **Contrato `Domain`** (`app/agent/domain.py`): dataclass que agrupa `tools`,
-  `state_schema`, `prompt`, `predict_state`, `ui_hints`.
-- **Domínio plugável** (`app/domain/<nome>/`): o *plug* de negócio. Hoje
+- **Contrato `Domain`** (`app/agent/domain.py`): dataclass com `tools`, `state_schema`,
+  `prompt`, `predict_state`, `ui_hints`.
+- **Domínio plugável** (`app/domain/<nome>/`): o plug de negócio; hoje
   `app/domain/restaurant/` exporta `DOMAIN`. **Trocar de domínio = 1 import no `main.py`.**
-- **Capabilities genéricas** (`app/tools/`, `app/registries/`, `app/services/`):
-  calendário/math/web/LLM/MCP. Sem domínio.
-- **Adaptador AG-UI** (`app/routers/agent.py`) + **servidor** (`middleware`/`errors`/
+- **Capabilities genéricas** (`app/tools/`, `app/registries/`, `app/services/`) +
+  **adaptador AG-UI** (`app/routers/agent.py`) + **servidor** (`middleware`/`errors`/
   `config`): sem domínio.
-- **Frontend** (`web/`): 100% genérico. Não conhece nomes de tools, shape de estado nem
-  títulos — recebe tudo do backend em runtime (eventos AG-UI). Ver **Frontend**.
+- **Frontend** (`web/`): 100% genérico — recebe tools/estado/títulos do backend em runtime
+  (eventos AG-UI). Ver **Frontend**.
 
-Regra prática: `reservation`/`delivery`/`restaurant`/menu **só** podem aparecer em
-`app/domain/` (e no raciocínio do agente). Um `grep` por esses termos nas camadas
-genéricas deve voltar vazio (exceto comentários ilustrativos).
+Regra prática: `reservation`/`delivery`/`restaurant`/menu só em `app/domain/` (e no
+raciocínio do agente); `grep` nas camadas genéricas deve voltar vazio (exceto comentários).
 
 ### Bibliotecas oficiais
 

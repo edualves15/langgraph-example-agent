@@ -1,9 +1,5 @@
-"""Domínio **Restaurante** — o *plug* de negócio montado sobre o engine genérico.
-
-Este pacote agrupa tudo que é específico do restaurante (tools, estado, prompt, dicas de
-UI) e o expõe como um único `DOMAIN: Domain`. O composition root (`app/main.py`) o importa
-e passa a `build_graph(DOMAIN, ...)`. Trocar de domínio = trocar este import por outro
-pacote que exponha um `DOMAIN`.
+"""Domínio **Restaurante** — agrupa tools, estado, prompt e dicas de UI específicos do
+negócio e os expõe como um único `DOMAIN: Domain`, consumido por `app/main.py`.
 """
 
 from importlib.resources import files
@@ -32,10 +28,8 @@ RESTAURANT_TOOLS = [
 
 _PROMPT = files(__package__).joinpath("prompt.md").read_text(encoding="utf-8").strip()
 
-# Estado preditivo (AG-UI PredictState): ligaria uma chave de estado de TOPO ao argumento de
-# uma tool. Vazio: era no-op com o provedor atual (Gemini não faz streaming de
-# `TOOL_CALL_ARGS`) e não mapeia para `items` aninhado em `reservation`/`delivery`. O estado
-# segue via STATE_SNAPSHOT/DELTA; o grafo trata lista vazia (não emite o evento).
+# Estado preditivo (AG-UI PredictState): vazio — no-op com Gemini (não faz streaming de
+# `TOOL_CALL_ARGS`) e não cabe no `items` aninhado. O estado segue via STATE_SNAPSHOT/DELTA.
 PREDICT_STATE: list[dict] = []
 
 DOMAIN = Domain(
