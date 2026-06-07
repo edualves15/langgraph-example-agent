@@ -47,6 +47,27 @@ def test_agent_sse_happy_path(client):
     assert types[-1] == "RUN_FINISHED"
 
 
+def test_agent_emits_ui_hints_custom_after_run_started(client):
+    # As dicas de UI do domínio são entregues ao front via evento CUSTOM (ui_hints),
+    # logo após o RUN_STARTED. O agente é stubado; ui_hints vem do lifespan (DOMAIN).
+    client.app.state.agent = StubAgent()
+    r = client.post("/agent", json=make_input())
+    types = sse_event_types(r.text)
+    assert types[0] == "RUN_STARTED"
+    assert types[1] == "CUSTOM"  # emitido imediatamente após o RUN_STARTED
+    assert '"name":"ui_hints"' in r.text
+    assert "state_tag_icons" in r.text and "state_titles" in r.text
+
+
+def test_agent_no_ui_hints_when_unset(client):
+    # Sem ui_hints no app.state (domínio sem dicas), nenhum CUSTOM é emitido.
+    client.app.state.agent = StubAgent()
+    client.app.state.ui_hints = None
+    r = client.post("/agent", json=make_input())
+    types = sse_event_types(r.text)
+    assert "CUSTOM" not in types
+
+
 def test_agent_run_error_wrap_is_safe(client):
     # Stub levanta após o 1º evento → o wrap deve emitir RUN_ERROR genérico (sem vazar).
     client.app.state.agent = StubAgent(events=default_events(), raise_after=0)

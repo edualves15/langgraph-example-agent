@@ -17,26 +17,10 @@
 
 import { cardList, optionList, confirmDialog, buttonGroup, numberStepper } from "./ui-components.js";
 
-// Ícones por chave (subcampo) de estado para o resumo "Sua reserva/Seu pedido" (web/app.js).
-// Um dos dois pontos de domínio do front (junto de STATE_TITLES); chave sem ícone cai no
-// rótulo humanizado (genérico). `{}` → 100% genérico.
-export const STATE_TAG_ICONS = {
-  items: "🍽️",
-  date: "📅",
-  time: "🕒",
-  party_size: "👥",
-  customer_name: "👤",
-  address: "📍",
-  phone: "☎️",
-  notes: "📝",
-};
-
-// Título do resumo por FLUXO (chave de topo do estado). O outro ponto de domínio do front;
-// fluxo sem título cai num rótulo genérico ("Resumo"). Ver renderSummary em web/app.js.
-export const STATE_TITLES = {
-  reservation: "Sua reserva",
-  delivery: "Seu pedido",
-};
+// Sem domínio aqui: os ícones/títulos do resumo de estado (antes STATE_TAG_ICONS/
+// STATE_TITLES) agora vêm do BACKEND em runtime, pelo evento AG-UI `CUSTOM`
+// (`name="ui_hints"`), e são tratados genericamente em web/app.js. Sem eles, o front
+// permanece 100% genérico (rótulos humanizados / título "Resumo").
 
 export const FRONTEND_TOOLS = [
   {

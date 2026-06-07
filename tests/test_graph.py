@@ -1,4 +1,5 @@
 from app.agent.graph import _frontend_tool_schemas, build_graph
+from app.domain.restaurant import DOMAIN
 
 
 def test_frontend_tool_schemas_conversion():
@@ -19,11 +20,11 @@ def test_frontend_tool_schemas_excludes_collisions():
 
 
 def test_build_graph_compiles_with_nodes():
-    graph = build_graph()
+    graph = build_graph(DOMAIN)
     nodes = set(graph.get_graph().nodes)
     assert {"agent", "tools"} <= nodes
 
 
 def test_build_graph_accepts_extra_tools():
     # extra_tools vazio (MCP) não quebra a construção.
-    assert build_graph(extra_tools=[]) is not None
+    assert build_graph(DOMAIN, extra_tools=[]) is not None

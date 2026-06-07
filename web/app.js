@@ -5,7 +5,13 @@
 import { HttpAgent } from "https://esm.sh/@ag-ui/client@0.0.55";
 import { renderMarkdown } from "./markdown.js";
 import { SVG } from "./icons.js";
-import { FRONTEND_TOOLS, STATE_TAG_ICONS, STATE_TITLES } from "./frontend-tools.js";
+import { FRONTEND_TOOLS } from "./frontend-tools.js";
+
+// Dicas de apresentação do estado, fornecidas pelo BACKEND em runtime via evento AG-UI
+// `CUSTOM` (`name="ui_hints"`) — o front não conhece o domínio. Default vazio ⇒ 100%
+// genérico (rótulos humanizados / título "Resumo"). Ver onCustomEvent + renderSummary.
+let stateTagIcons = {}; // { <subcampo>: <emoji> }
+let stateTitles = {};   // { <fluxo>: <título> }
 
 // Constantes — fonte única para valores que aparecem em múltiplos contextos.
 const ACCENT_COLOR = "#6ea8fe";        // sincronizar com --accent em styles.css
@@ -473,8 +479,9 @@ function editState(mutator) {
 // O estado tem um objeto por FLUXO (`reservation`/`delivery`), padronizado `{ items, ...campos }`;
 // só o ATIVO (objeto não-vazio) é mostrado. Renderiza uniformemente os subcampos do fluxo ativo:
 // subcampo array (`items`) → uma linha por item (× remove o item); subcampo escalar → uma linha
-// (× limpa o campo). Ícone por subcampo via STATE_TAG_ICONS; título via STATE_TITLES (pontos de
-// domínio). O botão/popover somem quando não há fluxo ativo.
+// (× limpa o campo). Ícone por subcampo via `stateTagIcons`; título via `stateTitles` (mapas
+// fornecidos pelo backend em runtime via CUSTOM/ui_hints). O botão/popover somem quando não há
+// fluxo ativo.
 function renderSummary(state) {
   const keys = state && typeof state === "object"
     ? Object.keys(state).filter((k) => !PROTOCOL_STATE_KEYS.has(k))
@@ -516,7 +523,7 @@ function renderSummary(state) {
     summaryEl.innerHTML = "";
     return;
   }
-  const title = STATE_TITLES[flow] || "Resumo";
+  const title = stateTitles[flow] || "Resumo";
   summaryToggle.hidden = false;
   summaryToggleLabel.textContent = title;
   summaryCountEl.textContent = String(rows.length);
@@ -527,7 +534,7 @@ function renderSummary(state) {
   for (const r of rows) {
     const row = document.createElement("div");
     row.className = "summary-row";
-    const icon = STATE_TAG_ICONS[r.key];
+    const icon = stateTagIcons[r.key];
     const lead = icon
       ? `<span class="summary-icon">${escapeHtml(icon)}</span>`
       : `<span class="summary-key">${escapeHtml(humanizeLabel(r.key))}</span>`;
@@ -785,12 +792,18 @@ const subscriber = {
     applyState();
   },
 
-  // CUSTOM: HITL (on_interrupt) e estado preditivo (PredictState).
+  // CUSTOM: HITL (on_interrupt), estado preditivo (PredictState) e dicas de UI do domínio
+  // (ui_hints — ícones/títulos do resumo, fornecidos pelo backend; tratados genericamente).
   onCustomEvent: ({ event }) => {
     if (event.name === "on_interrupt") {
       showApproval(event.value);
     } else if (event.name === "PredictState") {
       predictMap = Array.isArray(event.value) ? event.value : [];
+    } else if (event.name === "ui_hints") {
+      const v = event.value && typeof event.value === "object" ? event.value : {};
+      stateTagIcons = v.state_tag_icons && typeof v.state_tag_icons === "object" ? v.state_tag_icons : {};
+      stateTitles = v.state_titles && typeof v.state_titles === "object" ? v.state_titles : {};
+      applyState(); // re-renderiza o resumo com os ícones/títulos recém-recebidos
     }
   },
 };

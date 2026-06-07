@@ -4,15 +4,17 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
 
+from app.agent.domain import Domain
 from app.agent.prompts import get_system_prompt
 from app.agent.state import AgentState
-from app.registries.tool_registry import PREDICT_STATE, get_local_tools
+from app.registries.tool_registry import get_local_tools
 from app.services.llm_service import get_llm
 
 
-def _prompt(state: AgentState) -> list:
-    """Prompt dinâmico: injeta o system prompt (com a data de hoje) a cada chamada."""
-    return [SystemMessage(content=get_system_prompt()), *state["messages"]]
+def _prompt(state: AgentState, domain_fragment: str) -> list:
+    """Prompt dinâmico: injeta o system prompt (genérico + domínio, com a data de hoje)
+    a cada chamada."""
+    return [SystemMessage(content=get_system_prompt(domain_fragment)), *state["messages"]]
 
 
 def _frontend_tool_schemas(tools: list[dict], exclude: set[str]) -> list[dict]:
@@ -39,8 +41,12 @@ def _frontend_tool_schemas(tools: list[dict], exclude: set[str]) -> list[dict]:
     return schemas
 
 
-def build_graph(extra_tools: list | None = None) -> CompiledStateGraph:
-    """Constrói o grafo (loop ReAct) compatível com a integração AG-UI.
+def build_graph(domain: Domain, extra_tools: list | None = None) -> CompiledStateGraph:
+    """Constrói o grafo (loop ReAct) genérico, parametrizado por um `Domain`.
+
+    O engine é **agnóstico de domínio**: recebe o `Domain` (tools/state/prompt/
+    predict_state) por injeção — ver `app/agent/domain.py`. Trocar de negócio = passar
+    outro `Domain` (em `app/main.py`), sem tocar neste arquivo.
 
     Diferente do prebuilt `create_react_agent` (cujo `ToolNode` executa **toda** tool
     call), este grafo distingue tools de **backend** (executadas no servidor) de tools
@@ -54,12 +60,13 @@ def build_graph(extra_tools: list | None = None) -> CompiledStateGraph:
       da AIMessage, e o navegador executa a ação e retoma enviando um `ToolMessage` no
       próximo run (ver `web/app.js` / `web/frontend-tools.js`).
 
-    `state_schema=AgentState` declara `tools` (legível pelo nó). `checkpointer` persiste
-    threads (requisito para human-in-the-loop, ex.: `create_reservation`).
+    `state_schema=domain.state_schema` (subclasse de `AgentState`) declara `tools` +
+    as chaves de estado do domínio. `checkpointer` persiste threads (requisito para
+    human-in-the-loop, quando uma tool de ação chama `interrupt()`).
     """
     model = get_llm()
-    # Tools locais + tools extras (ex.: MCP, carregadas no lifespan). Ver app/main.py.
-    backend_tools = [*get_local_tools(), *(extra_tools or [])]
+    # Tools genéricas (registry) + tools do domínio + extras (ex.: MCP). Ver app/main.py.
+    backend_tools = [*get_local_tools(), *domain.tools, *(extra_tools or [])]
     backend_names = {t.name for t in backend_tools}
 
     async def agent_node(state: AgentState) -> dict:
@@ -67,8 +74,14 @@ def build_graph(extra_tools: list | None = None) -> CompiledStateGraph:
         model_with_tools = model.bind_tools([*backend_tools, *frontend])
         # `predict_state` (metadata): a lib emite o evento `PredictState` quando uma tool
         # mapeada é chamada, para a UI prever o estado a partir dos args em streaming.
-        config = {"metadata": {"predict_state": PREDICT_STATE}} if PREDICT_STATE else {}
-        response = await model_with_tools.ainvoke(_prompt(state), config=config)
+        config = (
+            {"metadata": {"predict_state": domain.predict_state}}
+            if domain.predict_state
+            else {}
+        )
+        response = await model_with_tools.ainvoke(
+            _prompt(state, domain.prompt), config=config
+        )
         return {"messages": [response]}
 
     def route(state: AgentState) -> str:
@@ -82,7 +95,7 @@ def build_graph(extra_tools: list | None = None) -> CompiledStateGraph:
             return "tools"
         return END
 
-    graph = StateGraph(AgentState)
+    graph = StateGraph(domain.state_schema)
     graph.add_node("agent", agent_node)
     graph.add_node("tools", ToolNode(backend_tools))
     graph.add_edge(START, "agent")

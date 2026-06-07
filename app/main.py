@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.agent.graph import build_graph
 from app.config import settings
+from app.domain.restaurant import DOMAIN
 from app.errors import describe_error, error_hint
 from app.middleware import configure_middlewares
 from app.routers import agent as agent_router
@@ -26,15 +27,19 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Lifespan — inicialização assíncrona dos recursos (padrão oficial FastAPI).
-# As tools MCP (`get_mcp_tools`) exigem setup async; aqui são carregadas (vazio por
-# enquanto) e mescladas no grafo. O agente fica em `app.state.agent`.
+# Composition root: monta o engine genérico com o `DOMAIN` escolhido (único lugar que
+# conhece engine + domínio + AG-UI). As tools MCP (`get_mcp_tools`) exigem setup async;
+# aqui são carregadas (vazio por enquanto) e mescladas no grafo. O agente fica em
+# `app.state.agent`; as dicas de UI do domínio em `app.state.ui_hints` (entregues ao
+# front via evento CUSTOM no router do agente).
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     mcp_tools = await get_mcp_tools()
-    graph = build_graph(extra_tools=mcp_tools)
+    graph = build_graph(DOMAIN, extra_tools=mcp_tools)
     app.state.agent = LangGraphAgent(name="private-agent", graph=graph)
-    logger.info("Agente AG-UI inicializado. MCP tools=%d", len(mcp_tools))
+    app.state.ui_hints = DOMAIN.ui_hints
+    logger.info("Agente AG-UI inicializado. Domínio=%s, MCP tools=%d", DOMAIN.name, len(mcp_tools))
     logger.info("AG_UI_STREAM_RAW_EVENTS=%s", settings.ag_ui_stream_raw_events)
     yield
 

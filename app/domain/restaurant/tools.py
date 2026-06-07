@@ -4,6 +4,10 @@ São tools de **backend** (efeito/dado server-side): o cardápio e os horários 
 fonte de verdade no servidor; `create_reservation` é o efeito sensível, protegido por
 human-in-the-loop via `interrupt()` (retomado pelo cliente com `Command(resume=...)`).
 
+Fazem parte do *plug* de domínio (`app/domain/restaurant/`): são registradas em
+`RESTAURANT_TOOLS` (ver `__init__.py`) e entram no grafo via `Domain.tools`. As chaves de
+estado que mutam (`reservation`/`delivery`) são declaradas em `RestaurantState` (`state.py`).
+
 A UI (cards/checkboxes/dialog) NÃO vive aqui — ela é renderizada por tools de frontend
 genéricas (`web/frontend-tools.js` + `web/ui-components.js`). O agente busca os dados
 aqui e os apresenta através daquelas tools de UI.
