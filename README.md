@@ -61,10 +61,11 @@ Rotas: `POST /agent` (SSE) · `GET /agent/health` · `GET /health`.
 
 **Documentação da API (Swagger):** `GET /docs` (Swagger UI), `/redoc` e `/openapi.json`
 (habilitados por default; desligue em produção com `APP_ENABLE_DOCS=false`). Respostas e
-erros são modelos Pydantic tipados; a seção **Schemas** lista **apenas os DTOs desta
-aplicação** (`ErrorResponse`, `HealthResponse`, `AgentHealthResponse`, `AgentInfo`) — os
-tipos do protocolo (`RunAgentInput`) vêm do cliente oficial `@ag-ui/client` e não são
-redefinidos. O corpo do `/agent` é validado em runtime e descrito em prosa + exemplo.
+erros são modelos Pydantic tipados (`ErrorResponse`, `HealthResponse`, `AgentHealthResponse`,
+`AgentInfo`). O **input** do `/agent` é tipado pelo modelo oficial `RunAgentInput` (aparece no
+**Schemas**, com exemplo no "Try it out"). O **output** é um stream **SSE** — não modelável
+como corpo único —, documentado como **catálogo de eventos** no `200`, com referência à spec
+AG-UI e ao pacote `ag-ui-protocol`.
 
 ---
 

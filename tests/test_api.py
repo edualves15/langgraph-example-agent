@@ -80,25 +80,28 @@ def test_agent_run_error_wrap_is_safe(client):
     assert "/internal/secret/path" not in r.text
 
 
-def test_openapi_schemas_only_dtos(client):
-    # A seção Schemas do Swagger expõe SÓ os DTOs da app (+ aninhados), sem tipos AG-UI.
+def test_openapi_schemas_dtos_and_input(client):
+    # Schemas traz nossos DTOs (+ aninhados) E o contrato de entrada tipado (RunAgentInput).
     spec = client.get("/openapi.json").json()
-    assert set(spec["components"]["schemas"]) == {
-        "ErrorResponse", "HealthResponse", "AgentHealthResponse", "AgentInfo",
-    }
-    # Sem $ref pendente para schemas removidos (ex.: RunAgentInput).
+    schemas = set(spec["components"]["schemas"])
+    assert {"ErrorResponse", "HealthResponse", "AgentHealthResponse", "AgentInfo"} <= schemas
+    assert "RunAgentInput" in schemas  # input do agente tipado pelo modelo oficial
+    # Nenhum $ref pendente (todos os refs resolvem para um schema existente).
     import json
-    assert "#/components/schemas/RunAgentInput" not in json.dumps(spec)
+    import re
+    refs = set(re.findall(r"#/components/schemas/([A-Za-z0-9_]+)", json.dumps(spec)))
+    assert not (refs - schemas)
 
 
 def test_openapi_agent_operation_documented(client):
     post = client.get("/openapi.json").json()["paths"]["/agent"]["post"]
-    # 200 é só SSE; erros documentados.
+    # 200 é só SSE (output referenciado como catálogo de eventos); erros documentados.
     assert list(post["responses"]["200"]["content"]) == ["text/event-stream"]
     assert {"413", "422", "500"} <= set(post["responses"])
-    # Corpo descrito + exemplo (validação real continua via RunAgentInput).
+    # Input tipado por RunAgentInput ($ref) + exemplo no Swagger ("Try it out").
     body = post["requestBody"]["content"]["application/json"]
-    assert "example" in body and body["schema"]["type"] == "object"
+    assert body["schema"]["$ref"].endswith("/RunAgentInput")
+    assert "examples" in body
 
 
 def test_docs_available_by_default(client):

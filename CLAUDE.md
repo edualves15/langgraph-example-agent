@@ -123,11 +123,13 @@ servidor), faz `build_graph(DOMAIN, extra_tools=mcp_tools)`, guarda o agente em
 - **DTOs & OpenAPI** (`app/schemas.py`): respostas tipadas com Pydantic — `ErrorResponse`,
   `HealthResponse`, `AgentInfo`, `AgentHealthResponse` (camada de servidor, genérica). Health
   usa `response_model`; `/agent` documenta `responses` (200 `text/event-stream` + 413/422/500
-  `ErrorResponse`) e acessa o agente via helper **tipado** `get_agent(request)`. O `app.openapi`
-  é **curado** em `main.py` (`_custom_openapi`): a seção *Schemas* do Swagger expõe **só os
-  DTOs** (e aninhados) — os tipos do protocolo (`RunAgentInput` e aninhados) são removidos e o
-  corpo do `/agent` é descrito em prosa + exemplo (segue validado em runtime). `/docs`,`/redoc`,
-  `/openapi.json` ligáveis por `APP_ENABLE_DOCS` (`_docs_kwargs`).
+  `ErrorResponse`) e acessa o agente via helper **tipado** `get_agent(request)`. **Contrato do
+  agente (híbrido):** o **input** é tipado pelo modelo oficial `RunAgentInput` (`Body(...)` com
+  exemplo) → aparece no *Schemas* com seus aninhados; o **output** é SSE (não modelável como
+  corpo único) → documentado como **catálogo de eventos** no 200 + referência à spec/pacote
+  AG-UI. O `app.openapi` (`_custom_openapi` em `main.py`) faz só um ajuste mínimo: deixar o 200
+  do `/agent` como `text/event-stream` (remove o `application/json` que o FastAPI mescla).
+  `/docs`,`/redoc`,`/openapi.json` ligáveis por `APP_ENABLE_DOCS` (`_docs_kwargs`).
 - `app/middleware.py` (`configure_middlewares`): **CORS** (`CORSMiddleware`) — permite que
   qualquer frontend AG-UI de outra origem consuma o agente. Origens via `AG_UI_CORS_ORIGINS`
   (default `*`); conforme a spec, credenciais só ligam com origens explícitas (wildcard `*` é

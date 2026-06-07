@@ -9,13 +9,13 @@ de `request.app.state.agent` (criado no lifespan, ver `app/main.py`).
 import asyncio
 import logging
 from collections.abc import AsyncIterator
-from typing import cast
+from typing import Annotated, cast
 
 from ag_ui.core import CustomEvent, EventType, RunErrorEvent
 from ag_ui.core.types import RunAgentInput
 from ag_ui.encoder import EventEncoder
 from ag_ui_langgraph import LangGraphAgent
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Body, Request
 from fastapi.responses import StreamingResponse
 
 from app.config import settings
@@ -32,14 +32,21 @@ def get_agent(request: Request) -> LangGraphAgent:
     return cast(LangGraphAgent, request.app.state.agent)
 
 
-# Respostas documentadas no OpenAPI. O 200 é um stream SSE (text/event-stream); os erros
-# usam o DTO ErrorResponse (`{"detail": "..."}`), coerente com os handlers/middleware.
+# Saída do agente (output) = stream SSE de eventos AG-UI. SSE não é modelável como um corpo
+# único no OpenAPI, então é documentado como **catálogo de eventos** + referência ao protocolo
+# (a definição tipada vive no pacote `ag-ui-protocol`). Erros usam o DTO ErrorResponse.
 _AGENT_RESPONSES: dict = {
     200: {
         "description": (
-            "Stream SSE (text/event-stream) de eventos AG-UI: RUN_STARTED, "
-            "TEXT_MESSAGE_* , TOOL_CALL_* , STATE_* , CUSTOM (ex.: ui_hints), "
-            "RUN_FINISHED/RUN_ERROR e RAW (omitível via AG_UI_STREAM_RAW_EVENTS)."
+            "Stream SSE (text/event-stream) de eventos AG-UI:\n"
+            "- RUN_STARTED {threadId, runId} · RUN_FINISHED · RUN_ERROR {message, code}\n"
+            "- TEXT_MESSAGE_START {messageId, role} · _CONTENT {delta} · _END\n"
+            "- TOOL_CALL_START {toolCallId, toolCallName} · _ARGS {delta} · _END · _RESULT\n"
+            "- STATE_SNAPSHOT {snapshot} · STATE_DELTA {delta JSON-Patch}\n"
+            "- CUSTOM {name, value} (ex.: name=\"ui_hints\") · RAW (omitível via "
+            "AG_UI_STREAM_RAW_EVENTS)\n\n"
+            "Definições tipadas dos eventos: pacote `ag-ui-protocol` (`ag_ui.core`) e a spec "
+            "do protocolo → https://docs.ag-ui.com"
         ),
         "content": {"text/event-stream": {}},
     },
@@ -48,16 +55,36 @@ _AGENT_RESPONSES: dict = {
     500: {"model": ErrorResponse, "description": "Erro inesperado ao processar a requisição."},
 }
 
+# Exemplo de corpo (input) exibido no Swagger ("Try it out").
+_AGENT_BODY_EXAMPLE = {
+    "threadId": "t1",
+    "runId": "r1",
+    "state": {},
+    "messages": [{"id": "m1", "role": "user", "content": "Olá"}],
+    "tools": [],
+    "context": [],
+    "forwardedProps": {},
+}
+
 
 @router.post(
     "/agent",
     summary="Executa o agente e transmite eventos AG-UI (SSE)",
     responses=_AGENT_RESPONSES,
 )
-async def agent_endpoint(input_data: RunAgentInput, request: Request) -> StreamingResponse:
+async def agent_endpoint(
+    input_data: Annotated[
+        RunAgentInput,
+        Body(openapi_examples={
+            "minimo": {"summary": "Mensagem simples do usuário", "value": _AGENT_BODY_EXAMPLE},
+        }),
+    ],
+    request: Request,
+) -> StreamingResponse:
     """Roda o agente para um `RunAgentInput` (protocolo AG-UI) e devolve o resultado como
-    um stream **SSE** de eventos AG-UI. Erros são emitidos como `RUN_ERROR` dentro do
-    stream; falhas pré-stream usam o formato `ErrorResponse`."""
+    um stream **SSE** de eventos AG-UI (ver respostas). O **input** é tipado pelo modelo
+    oficial `RunAgentInput`; o **output** é o catálogo de eventos documentado no 200. Erros
+    são emitidos como `RUN_ERROR` dentro do stream; falhas pré-stream usam `ErrorResponse`."""
     encoder = EventEncoder(accept=request.headers.get("accept"))
     request_agent = get_agent(request).clone()  # estado isolado por requisição (oficial)
     # Dicas de apresentação do domínio (ícones/títulos do resumo), entregues ao front

@@ -49,10 +49,12 @@ async def lifespan(app: FastAPI):
 
 _APP_DESCRIPTION = (
     "Agente **LangGraph** exposto pelo protocolo oficial **AG-UI** sobre **FastAPI**.\n\n"
-    "O `POST /agent` recebe um `RunAgentInput` (protocolo AG-UI) e devolve um stream **SSE** "
-    "de eventos. A seção **Schemas** lista apenas os **DTOs** desta aplicação (respostas e "
-    "erros) — os tipos do protocolo (`RunAgentInput` e aninhados) vêm do cliente oficial "
-    "`@ag-ui/client` e não são redefinidos aqui."
+    "O `POST /agent` recebe um `RunAgentInput` (input **tipado** pelo modelo oficial do "
+    "protocolo) e devolve um stream **SSE** de eventos. A seção **Schemas** traz os **DTOs** "
+    "desta aplicação (respostas e erros) **e** o contrato de entrada do agente "
+    "(`RunAgentInput` e tipos aninhados). A **saída** é um stream SSE — não modelável como "
+    "corpo único —, documentada como **catálogo de eventos** no 200 do `/agent`, com "
+    "referência à spec AG-UI (https://docs.ag-ui.com) e ao pacote `ag-ui-protocol`."
 )
 
 _OPENAPI_TAGS = [
@@ -89,24 +91,10 @@ app.include_router(health_router.router)
 
 
 # ---------------------------------------------------------------------------
-# OpenAPI curado — a seção "Schemas" do Swagger expõe SÓ os DTOs da aplicação (e seus
-# tipos aninhados), para o consumidor recriá-los facilmente. Os tipos do protocolo AG-UI
-# (`RunAgentInput` e aninhados) são removidos da seção; o corpo do `/agent` é descrito em
-# prosa + exemplo (continua validado em runtime pelo modelo oficial).
+# OpenAPI: pós-ajuste mínimo. A saída do `/agent` é SSE; o FastAPI mescla um
+# `application/json` default no 200 — removemos para deixar o 200 só `text/event-stream`.
+# (O input segue tipado por RunAgentInput e o restante do schema é o gerado nativamente.)
 # ---------------------------------------------------------------------------
-_DTO_SCHEMAS = {"ErrorResponse", "HealthResponse", "AgentHealthResponse", "AgentInfo"}
-
-_AGENT_REQUEST_EXAMPLE = {
-    "threadId": "t1",
-    "runId": "r1",
-    "state": {},
-    "messages": [{"id": "m1", "role": "user", "content": "Olá"}],
-    "tools": [],
-    "context": [],
-    "forwardedProps": {},
-}
-
-
 def _custom_openapi() -> dict:
     if app.openapi_schema:
         return app.openapi_schema
@@ -118,35 +106,11 @@ def _custom_openapi() -> dict:
         routes=app.routes,
         tags=app.openapi_tags,
     )
-    # Mantém só os DTOs (e aninhados) na seção Schemas.
-    components = schema.setdefault("components", {})
-    existing = components.get("schemas", {})
-    components["schemas"] = {n: m for n, m in existing.items() if n in _DTO_SCHEMAS}
-    # O corpo do /agent referenciava RunAgentInput (removido acima): substitui por um schema
-    # autocontido + exemplo, evitando `$ref` pendente e mantendo a validação em runtime.
     try:
-        op = schema["paths"]["/agent"]["post"]
-        # 200 é só SSE: remove o application/json default que o FastAPI mescla.
-        ok = op.get("responses", {}).get("200", {})
+        ok = schema["paths"]["/agent"]["post"]["responses"]["200"]
         if "content" in ok:
             ok["content"] = {"text/event-stream": ok["content"].get("text/event-stream", {})}
-        op["requestBody"] = {
-            "required": True,
-            "content": {
-                "application/json": {
-                    "schema": {
-                        "type": "object",
-                        "description": (
-                            "RunAgentInput do protocolo AG-UI (camelCase): threadId, runId, "
-                            "state, messages, tools, context, forwardedProps. Normalmente "
-                            "enviado pelo cliente oficial @ag-ui/client."
-                        ),
-                    },
-                    "example": _AGENT_REQUEST_EXAMPLE,
-                }
-            },
-        }
-    except KeyError:  # rota ausente (defensivo) — não quebra a geração
+    except KeyError:  # rota/resposta ausente (defensivo) — não quebra a geração
         pass
     app.openapi_schema = schema
     return schema
