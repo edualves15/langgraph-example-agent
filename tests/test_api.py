@@ -21,13 +21,6 @@ def test_health(client):
     assert r.json() == {"status": "ok"}
 
 
-def test_agent_health(client):
-    r = client.get("/agent/health")
-    assert r.status_code == 200
-    assert r.json()["status"] == "ok"
-    assert "name" in r.json()["agent"]
-
-
 def test_cors_preflight(client):
     r = client.options(
         "/agent/stream",
@@ -148,8 +141,7 @@ def test_openapi_schemas_dtos_and_input(client):
     # Schemas traz nossos DTOs (+ aninhados) E o contrato de entrada tipado (RunAgentInput).
     spec = client.get("/openapi.json").json()
     schemas = set(spec["components"]["schemas"])
-    assert {"ErrorResponse", "HealthResponse", "AgentHealthResponse", "AgentInfo",
-            "AgentInvokeResponse"} <= schemas
+    assert {"ErrorResponse", "HealthResponse", "AgentInvokeResponse"} <= schemas
     assert "RunAgentInput" in schemas  # input do agente tipado pelo modelo oficial
     # Nenhum $ref pendente (todos os refs resolvem para um schema existente).
     import json

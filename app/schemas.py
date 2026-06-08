@@ -32,23 +32,6 @@ class HealthResponse(BaseModel):
     model_config = {"json_schema_extra": {"examples": [{"status": "ok"}]}}
 
 
-class AgentInfo(BaseModel):
-    """Identificação do agente AG-UI ativo."""
-
-    name: str = Field(..., description="Nome do agente registrado no servidor.")
-
-
-class AgentHealthResponse(BaseModel):
-    """Status de saúde do subsistema do agente, com a identificação do agente ativo."""
-
-    status: Literal["ok"] = Field("ok", description="Indicador de saúde do subsistema do agente.")
-    agent: AgentInfo = Field(..., description="Dados do agente ativo.")
-
-    model_config = {
-        "json_schema_extra": {"examples": [{"status": "ok", "agent": {"name": "private-agent"}}]}
-    }
-
-
 class AgentInvokeResponse(BaseModel):
     """Resultado final **agregado** de um run (rota síncrona `POST /agent/invoke`) —
     contrapartida não-streaming do `POST /agent/stream` (SSE) para consumidores que não

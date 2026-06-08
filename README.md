@@ -65,12 +65,12 @@ curl -X POST http://localhost:8000/agent/invoke \
   -d '{"threadId":"t1","runId":"r1","state":{},"messages":[{"id":"m1","role":"user","content":"quanto é 15 * 4?"}],"tools":[],"context":[],"forwardedProps":{}}'
 ```
 
-Rotas: `POST /agent/stream` (SSE) · `POST /agent/invoke` (JSON) · `GET /agent/health` · `GET /health`.
+Rotas: `POST /agent/stream` (SSE) · `POST /agent/invoke` (JSON) · `GET /health`.
 
 **Documentação da API (Swagger):** `GET /docs` (Swagger UI), `/redoc` e `/openapi.json`
 (habilitados por default; desligue em produção com `APP_ENABLE_DOCS=false`). Respostas e
-erros são modelos Pydantic tipados (`ErrorResponse`, `HealthResponse`, `AgentHealthResponse`,
-`AgentInfo`, `AgentInvokeResponse`). O **input** das rotas do agente é tipado pelo modelo
+erros são modelos Pydantic tipados (`ErrorResponse`, `HealthResponse`,
+`AgentInvokeResponse`). O **input** das rotas do agente é tipado pelo modelo
 oficial `RunAgentInput` (aparece no **Schemas**, com exemplo no "Try it out"). O `/agent/stream`
 devolve um stream **SSE** — não modelável como corpo único —, documentado como **catálogo de
 eventos** no `200`; o `/agent/invoke` devolve o `AgentInvokeResponse` (JSON).
@@ -91,7 +91,7 @@ dicas de UI do domínio em `app.state.ui_hints` (entregues ao front via evento `
 |---|---|---|
 | `POST /agent/stream` | `app/routers/agent.py` | Stream SSE: `agent.clone().run(input)` + `EventEncoder`, com **wrap de `RUN_ERROR`** |
 | `POST /agent/invoke` | `app/routers/agent.py` | JSON síncrono: agrega os eventos do run num `AgentInvokeResponse` (`content`/`state`/`interrupt`) |
-| `GET /agent/health`, `GET /health` | `app/routers/agent.py`, `health.py` | Health checks |
+| `GET /health` | `app/routers/health.py` | Health check (liveness do servidor) |
 | CORS + limite de corpo | `app/middleware.py` | `configure_middlewares(app)` |
 | Página estática | `app/main.py` | `StaticFiles` montado em `/` por último |
 
@@ -157,7 +157,7 @@ app/
   config.py          Settings (pydantic-settings)
   middleware.py      CORS + limite de corpo (configure_middlewares)
   errors.py          describe_error (cliente) / error_hint (log)
-  routers/           agent.py (POST /agent/stream, POST /agent/invoke, GET /agent/health) · health.py (GET /health)
+  routers/           agent.py (POST /agent/stream, POST /agent/invoke) · health.py (GET /health)
   agent/             ENGINE genérico: graph.py · state.py (AgentState base) · domain.py (contrato
                        Domain) · prompts/ (system.md genérico + composição)
   registries/        tool_registry.py (só capabilities genéricas: calendário + math + web)

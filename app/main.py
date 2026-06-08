@@ -86,8 +86,8 @@ app = FastAPI(
 configure_middlewares(app)
 
 # Rotas — APIRouters dedicados.
-#   POST /agent/stream (SSE + wrap de RUN_ERROR), POST /agent/invoke (JSON agregado),
-#   GET /agent/health                                         →  app/routers/agent.py
+#   POST /agent/stream (SSE + wrap de RUN_ERROR), POST /agent/invoke (JSON agregado)
+#                                                            →  app/routers/agent.py
 #   GET  /health                                              →  app/routers/health.py
 app.include_router(agent_router.router)
 app.include_router(health_router.router)

@@ -24,7 +24,7 @@ from fastapi.responses import StreamingResponse
 
 from app.config import settings
 from app.errors import describe_error, error_hint
-from app.schemas import AgentHealthResponse, AgentInfo, AgentInvokeResponse, ErrorResponse
+from app.schemas import AgentInvokeResponse, ErrorResponse
 
 logger = logging.getLogger(__name__)
 
@@ -199,13 +199,3 @@ async def agent_invoke(
         state=public_state,
         interrupt=interrupt,
     )
-
-
-@router.get(
-    "/agent/health",
-    response_model=AgentHealthResponse,
-    summary="Liveness do agente",
-)
-def agent_health(request: Request) -> AgentHealthResponse:
-    """Status do subsistema do agente, com o nome do agente ativo."""
-    return AgentHealthResponse(agent=AgentInfo(name=get_agent(request).name))

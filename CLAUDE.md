@@ -104,7 +104,6 @@ raciocínio do agente); `grep` nas camadas genéricas deve voltar vazio (exceto 
 GET  /             →  web/index.html (StaticFiles, html=True)
 POST /agent/stream →  LangGraphAgent.run(RunAgentInput) → SSE de eventos AG-UI
 POST /agent/invoke →  LangGraphAgent.run(RunAgentInput) → JSON agregado (AgentInvokeResponse)
-GET  /agent/health →  {"status":"ok","agent":{"name":"private-agent"}}
 GET  /health       →  {"status":"ok"}
 ```
 
@@ -135,10 +134,11 @@ servidor), faz `build_graph(DOMAIN, extra_tools=mcp_tools)`, guarda o agente em
     ou qualquer exceção viram **500** (`ErrorResponse`, mensagem saneada por `describe_error`).
     **Sem parse de suggestions** (o bloco ` ```suggestions ` vem cru no `content`; a extração é
     só no front). Não emite `ui_hints` (canal de UI, irrelevante p/ consumidor JSON).
-  - `GET /agent/health`.
-- `app/routers/health.py` (`APIRouter`): `GET /health`.
+- `app/routers/health.py` (`APIRouter`): `GET /health` — liveness do servidor (resposta
+  estática; não toca no agente). Como o lifespan aborta o startup se o agente não montar, o
+  servidor responder já implica agente pronto — por isso **não** há `/agent/health` dedicado.
 - **DTOs & OpenAPI** (`app/schemas.py`): respostas tipadas com Pydantic — `ErrorResponse`,
-  `HealthResponse`, `AgentInfo`, `AgentHealthResponse`, `AgentInvokeResponse` (camada de
+  `HealthResponse`, `AgentInvokeResponse` (camada de
   servidor, genérica). Health e `/agent/invoke` usam `response_model`; `/agent/stream` documenta
   `responses` (200 `text/event-stream` + 413/422/500 `ErrorResponse`) e acessa o agente via
   helper **tipado** `get_agent(request)`. **Contrato do agente (híbrido):** o **input** (ambas
