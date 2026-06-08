@@ -1130,14 +1130,14 @@ body {
   outline-offset: 2px;
 }
 .tool-ui-summary .tog {
-  font-size: var(--fs-lg);
-  line-height: 1;
-  /* `⌄` fica alto na caixa de fonte — empurra p/ baixo p/ centralizar opticamente. */
-  transform: translateY(-2px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
   transition: transform 0.18s ease;
 }
 .tool-ui-summary.expanded .tog {
-  transform: translateY(1px) rotate(180deg);
+  transform: rotate(180deg);
 }
 
 .suggestions {
@@ -1427,13 +1427,25 @@ body {
 .state-card.collapsed .s-body {
   display: none;
 }
-/* Toggle chevron — reusa o mesmo do tool-card */
-.state-card .tog {
-  font-size: var(--fs-xs);
-  color: var(--muted);
+/* Toggle chevron — mesmo SVG do botão redondo e do tool-card; gira via `.collapsed` */
+.state-card .tog,
+.tool-card .tog {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
-  width: 10px;
-  text-align: center;
+  color: var(--muted);
+  line-height: 0;
+  transition: transform 0.18s ease;
+}
+.state-card .tog svg,
+.tool-card .tog svg {
+  width: 13px;
+  height: 13px;
+}
+.state-card.collapsed .tog,
+.tool-card.collapsed .tog {
+  transform: rotate(-90deg);
 }
 
 .tools {
@@ -1519,15 +1531,6 @@ body {
 }
 .tool-card .t-head:hover {
   background: var(--surface-hover);
-}
-
-/* Toggle chevron */
-.tool-card .tog {
-  font-size: var(--fs-xs);
-  color: var(--muted);
-  flex: 0 0 auto;
-  width: 10px;
-  text-align: center;
 }
 
 .log {

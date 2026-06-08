@@ -321,6 +321,7 @@ let pendingAgentBlock = null; // criado em RUN_STARTED, consumido no 1º TEXT_ME
 let runBubble = null;         // bolha única do run atual (mostra só a mensagem final)
 let runStartTime = null;
 let runTimerInterval = null;
+let runActive = false;        // run em andamento (gate do send; ≠ estado visual do botão)
 let currentAction = "pensando";
 let lastRunElapsed = null;    // duração do último run finalizado (rótulo dos blocos pós-run)
 
@@ -444,7 +445,7 @@ function renderState(state) {
     const typeLabel = Array.isArray(v) ? "array[" + v.length + "]" : v && typeof v === "object" ? "object" : typeof v;
     card.innerHTML =
       `<div class="s-head" role="button" tabindex="0">` +
-        `<span class="tog">▼</span>` +
+        `<span class="tog icon" aria-hidden="true">${SVG.chevron}</span>` +
         `<span class="s-key mono">${escapeHtml(k)}</span>` +
         `<span class="s-type">${typeLabel}</span>` +
       `</div>` +
@@ -457,11 +458,9 @@ function renderState(state) {
     pre.textContent = JSON.stringify(v, null, 2);
     body.appendChild(pre);
 
-    // Accordion toggle
+    // Accordion toggle (a rotação do chevron é via CSS, por `.collapsed`)
     card.querySelector(".s-head").addEventListener("click", () => {
       card.classList.toggle("collapsed");
-      const tog = card.querySelector(".tog");
-      if (tog) tog.textContent = card.classList.contains("collapsed") ? "▶" : "▼";
     });
 
     stateEl.appendChild(card);
@@ -737,7 +736,7 @@ const subscriber = {
     card.className = "tool-card collapsed";
     card.innerHTML =
       `<div class="t-head mono" role="button" tabindex="0">` +
-        `<span class="tog">▶</span>` +
+        `<span class="tog icon" aria-hidden="true">${SVG.chevron}</span>` +
         `<span class="dot"></span>` +
         `<span class="tname">${escapeHtml(event.toolCallName)}</span>` +
         `<span class="tid">${escapeHtml(event.toolCallId.slice(0, 8))}</span>` +
@@ -746,11 +745,9 @@ const subscriber = {
         `<div class="field args-field" hidden><span class="lbl">argumentos</span><pre class="args pre-block"></pre></div>` +
         `<div class="field result-field" hidden><span class="lbl">resultado</span><pre class="result pre-block"></pre></div>` +
       `</div>`;
-    // Accordion toggle no header
+    // Accordion toggle no header (a rotação do chevron é via CSS, por `.collapsed`)
     card.querySelector(".t-head").addEventListener("click", () => {
       card.classList.toggle("collapsed");
-      const tog = card.querySelector(".tog");
-      if (tog) tog.textContent = card.classList.contains("collapsed") ? "▶" : "▼";
     });
     if (toolsEl.querySelector(".tab-empty")) toolsEl.innerHTML = "";
     toolsEl.appendChild(card);
@@ -840,6 +837,7 @@ agent.subscribe(subscriber);
 
 function finalizeRun(status) {
   setStatus(status);
+  runActive = false;
   for (const [, b] of assistantBubbles) b.el.classList.remove("streaming");
   sendBtn.disabled = !inputEl.value.trim();
 }
@@ -918,7 +916,8 @@ $("reject").addEventListener("click", () => resolveApproval(false));
 // Envio de mensagens
 // ---------------------------------------------------------------------------
 async function send(text) {
-  if (!text.trim() || sendBtn.disabled) return;
+  if (!text.trim() || runActive) return;
+  runActive = true;
   addUserBubble(text);
   setStatus("running");
   sendBtn.disabled = true;
