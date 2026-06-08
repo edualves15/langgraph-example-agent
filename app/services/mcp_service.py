@@ -15,6 +15,7 @@ Shape por servidor (langchain-mcp-adapters), em `mcpServers`:
     "nome": {"command": "python", "args": ["server.py"], "transport": "stdio"}
 """
 
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -22,6 +23,7 @@ from pathlib import Path
 from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
+from app.config import settings
 from app.errors import error_hint
 
 logger = logging.getLogger(__name__)
@@ -72,11 +74,20 @@ async def get_mcp_tools(servers: dict | None = None) -> list[BaseTool]:
         servers = general_mcp_servers()
     if not servers:
         return []
+    timeout = settings.ag_ui_mcp_startup_timeout
     tools: list[BaseTool] = []
     for name, cfg in servers.items():
+        # Um client por servidor (não um único `MultiServerMCPClient` com todos): assim a
+        # falha/timeout de um servidor é isolada e não impede o carregamento dos demais.
         try:
             client = MultiServerMCPClient({name: cfg})
-            tools.extend(await client.get_tools())
+            loaded = client.get_tools()
+            if timeout > 0:
+                loaded = asyncio.wait_for(loaded, timeout=timeout)
+            tools.extend(await loaded)
+        except asyncio.TimeoutError:
+            logger.warning("MCP: servidor '%s' excedeu o timeout de %.1fs — ignorado.",
+                           name, timeout)
         except Exception as exc:  # isola a falha de um servidor dos demais
             logger.warning("MCP: falha ao carregar o servidor '%s' (%s) — ignorado.",
                            name, error_hint(exc))

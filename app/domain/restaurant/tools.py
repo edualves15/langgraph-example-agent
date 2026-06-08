@@ -51,7 +51,7 @@ def _apply_fields(target: dict, fields: dict) -> dict:
     return target
 
 
-def _approved(decision) -> bool:
+def _approved(decision: bool | dict) -> bool:
     """Normaliza a retomada do HITL: aceita booleano ou `{"approved": bool}`."""
     if isinstance(decision, dict):
         return bool(decision.get("approved", False))

@@ -45,3 +45,24 @@ def test_get_mcp_tools_isolates_failures(monkeypatch):
 
 def test_get_mcp_tools_empty_returns_list():
     assert asyncio.run(m.get_mcp_tools({})) == []
+
+
+class _SlowClient:
+    """Substitui MultiServerMCPClient: 'slow' demora demais; os demais retornam rápido."""
+
+    def __init__(self, servers):
+        self._name = next(iter(servers))
+
+    async def get_tools(self):
+        if self._name == "slow":
+            await asyncio.sleep(5)  # excede o timeout baixo do teste
+        return [object()]
+
+
+def test_get_mcp_tools_skips_server_on_timeout(monkeypatch):
+    monkeypatch.setattr(m, "MultiServerMCPClient", _SlowClient)
+    monkeypatch.setattr(m.settings, "ag_ui_mcp_startup_timeout", 0.05)
+    servers = {"ok1": {"url": "x"}, "slow": {"url": "y"}, "ok2": {"url": "z"}}
+    tools = asyncio.run(m.get_mcp_tools(servers))
+    # 'slow' estoura o timeout e é pulado; os dois rápidos entram (startup não trava).
+    assert len(tools) == 2

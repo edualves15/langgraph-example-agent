@@ -17,7 +17,8 @@ let stateTitles = {};   // { <fluxo>: <título> }
 // Constantes — fonte única para valores que aparecem em múltiplos contextos.
 const ACCENT_COLOR = "#6ea8fe";        // sincronizar com --accent em styles.css
 const STATUS_LABELS = {
-  idle: "idle", running: "running", waiting: "aguardando você", done: "done", error: "error",
+  idle: "ocioso", running: "executando", waiting: "aguardando você",
+  done: "concluído", error: "erro",
 };
 
 // Cliente AG-UI 100% GENÉRICO: renderiza apenas com o que o protocolo fornece em
@@ -102,12 +103,12 @@ function applyPredict(toolName, rawArgs) {
 }
 
 // Cria um bloco INLINE no chat onde uma frontend tool renderiza seu componente
-// interativo. Apresentado como mensagem do agente — rótulo "Agent (<duração>)",
+// interativo. Apresentado como mensagem do agente — rótulo "Agente (<duração>)",
 // espelhando a bolha de agente concluída. A `message` (pergunta vinda do arg da tool) é
 // renderizada ACIMA dos controles, no MESMO balão → uma única mensagem (texto + widget).
 // Devolve o container (nó DOM) onde o handler monta o widget.
 function createToolUiBlock(message) {
-  const label = lastRunElapsed ? agentLabelHTML(lastRunElapsed) : "Agent";
+  const label = lastRunElapsed ? agentLabelHTML(lastRunElapsed) : "Agente";
   const wrapper = document.createElement("div");
   wrapper.className = "msg-wrapper assistant tool-ui";
   wrapper.innerHTML =
@@ -326,7 +327,7 @@ let lastRunElapsed = null;    // duração do último run finalizado (rótulo do
 function formatElapsed(ms) { return (ms / 1000).toFixed(1) + "s"; }
 
 function timerLabel() {
-  return "Working… (" + formatElapsed(Date.now() - runStartTime) + " · " + currentAction + ")";
+  return "Trabalhando… (" + formatElapsed(Date.now() - runStartTime) + " · " + currentAction + ")";
 }
 
 function setAction(action) {
@@ -357,15 +358,15 @@ function setAgentStatus(wrapper, statusClass, label, icon) {
 }
 
 // Rótulo do agente com o tempo de processamento em estilo muted e fonte menor.
-// "Agent" normal + "(1.8s)" muted.
+// "Agente" normal + "(1.8s)" muted.
 function agentLabelHTML(total) {
-  return `Agent <span class="who-time">(${escapeHtml(total)})</span>`;
+  return `Agente <span class="who-time">(${escapeHtml(total)})</span>`;
 }
 
 function getAssistantBubble(messageId) {
   let entry = assistantBubbles.get(messageId);
   if (!entry) {
-    const block = createAgentWrapper("", "Agent", "");
+    const block = createAgentWrapper("", "Agente", "");
     chatEl.appendChild(block.wrapper);
     entry = { el: block.bubble, body: block.bubble, wrapper: block.wrapper, raw: block.raw };
     assistantBubbles.set(messageId, entry);
@@ -633,7 +634,7 @@ const subscriber = {
     renderSuggestions([]);
     runStartTime = Date.now();
     currentAction = "trabalhando";
-    const block = createAgentWrapper("spinner", "Working… (0.0s · " + currentAction + ")", "");
+    const block = createAgentWrapper("spinner", "Trabalhando… (0.0s · " + currentAction + ")", "");
     chatEl.appendChild(block.wrapper);
     chatEl.scrollTop = chatEl.scrollHeight;
     pendingAgentBlock = block;

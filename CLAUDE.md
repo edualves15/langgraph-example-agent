@@ -90,6 +90,16 @@ Negócio isolado de infraestrutura; cada camada conhece as outras só por contra
 Regra prática: `reservation`/`delivery`/`restaurant`/menu só em `app/domain/` (e no
 raciocínio do agente); `grep` nas camadas genéricas deve voltar vazio (exceto comentários).
 
+#### Convenção de idioma
+
+**Código em inglês, textos de UI em português** — em todo o projeto. Identificadores,
+nomes de funções/variáveis, chaves de estado e classes CSS ficam em **inglês**; tudo que é
+**visível ao usuário final** (rótulos do chat, status, botões, placeholders, mensagens de
+erro renderizadas na bolha) fica em **português**. Ex.: no `web/app.js`, `STATUS_LABELS`
+mapeia chaves inglesas (`idle`/`running`/`done`) para rótulos PT (`ocioso`/`executando`/
+`concluído`); o rótulo do agente é `Agente`. Logs/`console.*` são diagnóstico (não-UI) — não
+precisam ser traduzidos.
+
 ### Bibliotecas oficiais
 
 | Componente | Pacote | Versão |
@@ -110,8 +120,10 @@ GET  /health       →  {"status":"ok"}
 **Estrutura (FastAPI):** `app/main.py` é o **composition root** — cria o
 `FastAPI(lifespan=...)`, chama `configure_middlewares(app)` e inclui os routers. É o **único**
 lugar que conhece engine + domínio: importa `DOMAIN` (`from app.domain.restaurant import
-DOMAIN`). **Lifespan** (padrão oficial p/ recursos async): une os servidores MCP gerais
-(`general_mcp_servers()`, da raiz) com os do domínio (`DOMAIN.mcp_servers`) via
+DOMAIN`). **Lifespan** (padrão oficial p/ recursos async): primeiro **fail-fast** de config
+via `_require_api_key()` (aborta o startup com erro claro se `GEMINI_API_KEY` estiver vazia,
+em vez de subir e falhar com 500 genérico na 1ª requisição ao LLM); depois une os servidores
+MCP gerais (`general_mcp_servers()`, da raiz) com os do domínio (`DOMAIN.mcp_servers`) via
 `merge_servers(...)`, carrega as tools (`get_mcp_tools(servers)`, com isolamento de falha por
 servidor), faz `build_graph(DOMAIN, extra_tools=mcp_tools)`, guarda o agente em
 **`app.state.agent`** e as dicas de UI do domínio em **`app.state.ui_hints`**
@@ -161,7 +173,9 @@ servidor), faz `build_graph(DOMAIN, extra_tools=mcp_tools)`, guarda o agente em
   domínio** (`app/domain/<dominio>/mcp.json` → `Domain.mcp_servers`, viajam com o plug).
   Ambas **vazias** por padrão → `get_mcp_tools()` retorna `[]`. Funções: `load_mcp_servers(path)`,
   `general_mcp_servers()`, `merge_servers(*dicts)` (colisão de nome de servidor → 1º vence,
-  com aviso) e `get_mcp_tools(servers)` (**isola falha por servidor**: um servidor com erro é
+  com aviso) e `get_mcp_tools(servers)` (**isola falha por servidor**: um client
+  `MultiServerMCPClient` **por servidor** — escolha deliberada para isolar erro/timeout de um
+  servidor dos demais; um servidor com erro **ou que estoura `AG_UI_MCP_STARTUP_TIMEOUT`** é
   logado e pulado, não derruba o startup). As tools entram no grafo por
   `build_graph(DOMAIN, extra_tools=...)`, que **deduplica nomes** (backend confiável vence).
 
@@ -500,4 +514,5 @@ Copy `.env.example` to `.env`. Required keys:
 | `AG_UI_STREAM_RAW_EVENTS` | `true` | When `false`, omits `RAW` events (LangChain callback passthrough) from the SSE stream |
 | `AG_UI_CORS_ORIGINS` | `*` | Origens permitidas via CORS (CSV). `*` libera todas; com origens explícitas, credenciais são habilitadas. |
 | `AG_UI_MAX_BODY_BYTES` | `2000000` | Tamanho máximo do corpo de uma requisição (bytes). `0` desabilita o limite. |
+| `AG_UI_MCP_STARTUP_TIMEOUT` | `15` | Timeout (s) por servidor MCP ao carregar tools no startup. O servidor que estoura é logado e pulado. `0` desabilita. |
 | `APP_ENABLE_DOCS` | `true` | Quando `false`, desliga `/docs`, `/redoc` e `/openapi.json` (recomendado em produção). Config de APLICAÇÃO — sem prefixo `AG_UI_`. |

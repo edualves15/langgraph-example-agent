@@ -1,7 +1,29 @@
 """Testes de config, registry, prompts e mcp_service (funções puras)."""
 
+import pytest
+
 from app.config import Settings
 from app.registries.tool_registry import get_local_tools
+
+
+def test_require_api_key_rejects_empty(monkeypatch):
+    # Fail-fast: chave vazia (ou só espaços) deve abortar o startup com erro claro.
+    import app.main as main
+
+    monkeypatch.setattr(main.settings, "gemini_api_key", "")
+    with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
+        main._require_api_key()
+
+    monkeypatch.setattr(main.settings, "gemini_api_key", "   ")
+    with pytest.raises(RuntimeError):
+        main._require_api_key()
+
+
+def test_require_api_key_accepts_present(monkeypatch):
+    import app.main as main
+
+    monkeypatch.setattr(main.settings, "gemini_api_key", "some-key")
+    main._require_api_key()  # não levanta
 
 
 def test_cors_origins_parsing():

@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     ag_ui_max_body_bytes: int = Field(
         2_000_000, ge=0, description="Tamanho máx. do corpo (bytes); 0 desabilita.")
 
+    # Timeout (s) por servidor MCP ao carregar tools no startup. Evita que um servidor
+    # pendurado trave a inicialização (o servidor que estoura é logado e pulado). 0 desliga.
+    ag_ui_mcp_startup_timeout: float = Field(
+        15.0, ge=0, description="Timeout (s) por servidor MCP no startup; 0 desabilita.")
+
     # Documentação OpenAPI: config de APLICAÇÃO (não do protocolo AG-UI) — por isso SEM o
     # prefixo `AG_UI_`. Em produção, desabilitar /docs, /redoc e /openapi.json é prática
     # recomendada (reduz a superfície/exposição da API).
