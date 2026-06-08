@@ -695,10 +695,7 @@ body {
 
 /* Sugestões e composer como filhos diretos de .chat-panel (pós-transição) */
 .chat-panel:not(.is-empty) > .suggestions {
-  padding: 6px 18px 0;
-}
-.chat-panel:not(.is-empty) > .composer {
-  border-top: 1px solid var(--border);
+  padding: 14px 18px;
 }
 
 /* ── Message wrapper (coluna: header + balão) ── */
@@ -1142,9 +1139,13 @@ body {
 
 .suggestions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 8px;
-  padding: 0 16px 12px;
+  padding: 14px 16px;
+  /* Rolagem horizontal: comporta muitas sugestões sem quebrar linha. */
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 /* Slot genérico: sem sugestões, não ocupa espaço. */
 .suggestions:empty {
@@ -1152,6 +1153,8 @@ body {
   padding: 0;
 }
 .suggestions button {
+  flex: 0 0 auto;
+  white-space: nowrap;
   background: var(--panel-2);
   color: var(--text);
   border: 1px solid var(--border);
@@ -1171,7 +1174,6 @@ body {
 /* ── Composer ── */
 .composer {
   padding: 10px 16px;
-  border-top: 1px solid var(--border);
 }
 
 .composer-wrap {
