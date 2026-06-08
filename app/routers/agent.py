@@ -1,16 +1,13 @@
-"""Router dos endpoints AG-UI do agente sobre LangGraph.
+"""Router dos endpoints AG-UI do agente sobre LangGraph. Duas formas de consumir o mesmo
+agente (de `request.app.state.agent`, criado no lifespan — ver `app/main.py`):
 
-Duas formas de consumir o mesmo agente:
-
-- `POST /agent/stream` (SSE) — superfície **canônica** do protocolo: replica os primitivos
-  oficiais (`agent.clone().run(input)` + `EventEncoder`), com um **wrap fino de erro** que,
-  em qualquer exceção, emite um `RUN_ERROR` (`code="agent_run_error"`) em vez de derrubar o
-  SSE cru. Streama campo a campo (texto token a token, estado, interrupt).
+- `POST /agent/stream` (SSE) — superfície **canônica**: replica os primitivos oficiais
+  (`agent.clone().run(input)` + `EventEncoder`), streamando campo a campo (texto token a token,
+  estado, interrupt), com um **wrap fino de erro** que emite `RUN_ERROR`
+  (`code="agent_run_error"`) em vez de derrubar o SSE cru.
 - `POST /agent/invoke` (JSON) — contrapartida **síncrona**: roda o agente até o fim, **agrega**
-  os eventos AG-UI e devolve um único corpo JSON (`AgentInvokeResponse`) — para consumidores
-  que não implementam o loop de eventos.
-
-O agente vem de `request.app.state.agent` (criado no lifespan, ver `app/main.py`).
+  os eventos AG-UI num único corpo JSON (`AgentInvokeResponse`), para consumidores que não
+  implementam o loop de eventos.
 """
 
 import asyncio
@@ -159,15 +156,13 @@ async def agent_invoke(
     ],
     request: Request,
 ) -> AgentInvokeResponse:
-    """Roda o agente para um `RunAgentInput` e devolve o **resultado final agregado** num
-    único corpo JSON (`AgentInvokeResponse`) — contrapartida síncrona do `/agent/stream`.
-
-    Agrega os eventos AG-UI do run: `content` = a **mensagem final** do assistente (cada
-    novo `TEXT_MESSAGE_START` reinicia o acúmulo, convergindo para a última e descartando
-    preâmbulos — espelha a regra de "uma bolha por run" do front); `state` = o último
-    `STATE_SNAPSHOT` (sem chaves protocolares); `interrupt` = o `value` de um `CUSTOM`
-    `on_interrupt` (HITL), ou `null`. Um `RUN_ERROR` ou qualquer exceção viram **500**
-    (`ErrorResponse`), com a mensagem já saneada (`describe_error`)."""
+    """Roda o agente (`clone().run`) e devolve o **resultado final agregado** num único corpo
+    JSON (`AgentInvokeResponse`) — contrapartida síncrona do `/agent/stream`. Agrega os eventos
+    AG-UI: `content` = mensagem **final** do assistente (cada `TEXT_MESSAGE_START` reinicia o
+    acúmulo → converge p/ a última, descartando preâmbulos; espelha "uma bolha por run" do
+    front); `state` = último `STATE_SNAPSHOT` sem chaves protocolares; `interrupt` = `value` de
+    um `CUSTOM` `on_interrupt` (HITL) ou `null`. `RUN_ERROR` ou exceção → **500**
+    (`ErrorResponse`, mensagem saneada por `describe_error`)."""
     request_agent = get_agent(request).clone()  # estado isolado por requisição (oficial)
 
     content = ""

@@ -50,33 +50,26 @@ class AgentHealthResponse(BaseModel):
 
 
 class AgentInvokeResponse(BaseModel):
-    """Resultado final **agregado** de um run do agente (rota síncrona `POST /agent/invoke`).
-
-    Contrapartida não-streaming do `POST /agent/stream` (SSE): roda o agente até o fim,
-    agrega os eventos AG-UI e devolve um único corpo JSON — para consumidores que não
-    implementam o loop de eventos (script, server-to-server, webhook).
-    """
+    """Resultado final **agregado** de um run (rota síncrona `POST /agent/invoke`) —
+    contrapartida não-streaming do `POST /agent/stream` (SSE) para consumidores que não
+    implementam o loop de eventos (script, server-to-server, webhook)."""
 
     threadId: str = Field(..., description="Identificador da thread (eco do input).")
     runId: str = Field(..., description="Identificador do run (eco do input).")
     content: str = Field(
         "",
         description=(
-            "Texto final do assistente — a mensagem final do run (preâmbulos descartados). "
-            "Pode conter um bloco ```suggestions``` cru (a extração de sugestões é feita no "
-            "front, não aqui)."
+            "Mensagem final do assistente (preâmbulos descartados). Pode conter um bloco "
+            "```suggestions``` cru — a extração de sugestões é feita no front, não aqui."
         ),
     )
     state: dict = Field(
         default_factory=dict,
-        description="Snapshot final do estado do agente, sem as chaves protocolares (messages/tools).",
+        description="Snapshot final do estado, sem as chaves protocolares (messages/tools).",
     )
     interrupt: Any | None = Field(
         None,
-        description=(
-            "Valor (app-defined) do interrupt HITL se o run pausou aguardando aprovação; "
-            "null caso contrário."
-        ),
+        description="Valor (app-defined) do interrupt HITL se o run pausou; null caso contrário.",
     )
 
     model_config = {
