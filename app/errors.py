@@ -23,11 +23,11 @@ def error_hint(exc: BaseException) -> str:
 
 
 def _http_status(exc: BaseException) -> int | None:
-    """Procura um código HTTP 4xx/5xx na cadeia de causas da exceção."""
-    seen: set[int] = set()
+    """Procura um código HTTP 4xx/5xx na cadeia de causas (profundidade limitada)."""
     current: BaseException | None = exc
-    while current is not None and id(current) not in seen:
-        seen.add(id(current))
+    for _ in range(10):  # cadeia de causas é acíclica na prática; o teto evita surpresas
+        if current is None:
+            break
         for attr in ("status_code", "status", "code", "http_status"):
             value = getattr(current, attr, None)
             if isinstance(value, int) and 400 <= value < 600:

@@ -5,11 +5,7 @@
 // qualquer domínio — quem dá significado de negócio são as tools de frontend
 // (web/frontend-tools.js) que os compõem.
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"]/g, (c) => (
-    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]
-  ));
-}
+import { escapeHtml } from "./escape.js";
 
 // Formatação de preço AGNÓSTICA de moeda: string já formatada pelo domínio passa
 // direto; número só vira moeda se um `currency` (ISO 4217) for fornecido em runtime —

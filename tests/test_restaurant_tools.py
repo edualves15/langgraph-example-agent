@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from app.tools import restaurant_tools as r
+from app.domain.restaurant import tools as r
 
 
 def test_get_menu_returns_json_list():

@@ -4,6 +4,9 @@ São tools de **backend** (efeito/dado server-side): o cardápio e os horários 
 fonte de verdade no servidor; `create_reservation` é o efeito sensível, protegido por
 human-in-the-loop via `interrupt()` (retomado pelo cliente com `Command(resume=...)`).
 
+Parte do plug de domínio: registradas em `RESTAURANT_TOOLS` (`__init__.py`) → `Domain.tools`;
+o estado que mutam (`reservation`/`delivery`) vive em `RestaurantState` (`state.py`).
+
 A UI (cards/checkboxes/dialog) NÃO vive aqui — ela é renderizada por tools de frontend
 genéricas (`web/frontend-tools.js` + `web/ui-components.js`). O agente busca os dados
 aqui e os apresenta através daquelas tools de UI.
@@ -38,6 +41,21 @@ def _items_from_ids(item_ids: list[str]) -> list[dict]:
         for i in item_ids
         if i in _MENU_BY_ID
     ]
+
+
+def _apply_fields(target: dict, fields: dict) -> dict:
+    """Merge parcial do rascunho: grava em `target` só os campos com valor não-None."""
+    for key, value in fields.items():
+        if value is not None:
+            target[key] = value
+    return target
+
+
+def _approved(decision) -> bool:
+    """Normaliza a retomada do HITL: aceita booleano ou `{"approved": bool}`."""
+    if isinstance(decision, dict):
+        return bool(decision.get("approved", False))
+    return bool(decision)
 
 
 @tool
@@ -82,14 +100,10 @@ def update_reservation(
     reservation = dict(state.get("reservation") or {})
     if item_ids is not None:
         reservation["items"] = _items_from_ids(item_ids)
-    for key, value in (
-        ("date", date_iso),
-        ("time", time),
-        ("party_size", party_size),
-        ("customer_name", customer_name),
-    ):
-        if value is not None:
-            reservation[key] = value
+    _apply_fields(reservation, {
+        "date": date_iso, "time": time,
+        "party_size": party_size, "customer_name": customer_name,
+    })
 
     # Um único fluxo ativo por vez: atualizar a reserva zera o rascunho de delivery.
     return Command(
@@ -130,14 +144,10 @@ def update_delivery(
     delivery = dict(state.get("delivery") or {})
     if item_ids is not None:
         delivery["items"] = _items_from_ids(item_ids)
-    for key, value in (
-        ("customer_name", customer_name),
-        ("address", address),
-        ("phone", phone),
-        ("notes", notes),
-    ):
-        if value is not None:
-            delivery[key] = value
+    _apply_fields(delivery, {
+        "customer_name": customer_name, "address": address,
+        "phone": phone, "notes": notes,
+    })
 
     # Um único fluxo ativo por vez: atualizar o delivery zera o rascunho de reserva.
     return Command(
@@ -218,13 +228,7 @@ def create_reservation(
         }
     )
 
-    # O cliente pode retomar com um booleano ou com {"approved": bool}.
-    if isinstance(decision, dict):
-        approved = bool(decision.get("approved", False))
-    else:
-        approved = bool(decision)
-
-    if approved:
+    if _approved(decision):
         extra = f" Pratos: {', '.join(dishes)}." if dishes else ""
         confirmation = (
             f"Reserva confirmada para {customer_name} em {date_iso} às {time}, "
@@ -280,12 +284,7 @@ def create_delivery_order(
         }
     )
 
-    if isinstance(decision, dict):
-        approved = bool(decision.get("approved", False))
-    else:
-        approved = bool(decision)
-
-    if approved:
+    if _approved(decision):
         note = f" Obs.: {notes}." if notes else ""
         confirmation = (
             f"Pedido confirmado para {customer_name} — entrega em {address}, "

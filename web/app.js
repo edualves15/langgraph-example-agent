@@ -5,7 +5,14 @@
 import { HttpAgent } from "https://esm.sh/@ag-ui/client@0.0.55";
 import { renderMarkdown } from "./markdown.js";
 import { SVG } from "./icons.js";
-import { FRONTEND_TOOLS, STATE_TAG_ICONS, STATE_TITLES } from "./frontend-tools.js";
+import { FRONTEND_TOOLS } from "./frontend-tools.js";
+import { escapeHtml } from "./escape.js";
+
+// Dicas de apresentação do estado, fornecidas pelo BACKEND em runtime via evento AG-UI
+// `CUSTOM` (`name="ui_hints"`) — o front não conhece o domínio. Default vazio ⇒ 100%
+// genérico (rótulos humanizados / título "Resumo"). Ver onCustomEvent + renderSummary.
+let stateTagIcons = {}; // { <subcampo>: <emoji> }
+let stateTitles = {};   // { <fluxo>: <título> }
 
 // Constantes — fonte única para valores que aparecem em múltiplos contextos.
 const ACCENT_COLOR = "#6ea8fe";        // sincronizar com --accent em styles.css
@@ -23,9 +30,9 @@ const STATUS_LABELS = {
 globalThis.fetch = globalThis.fetch.bind(globalThis);
 
 // ---------------------------------------------------------------------------
-// Setup do agente oficial — aponta para o endpoint AG-UI exposto pelo FastAPI.
+// Setup do agente oficial — aponta para o endpoint AG-UI (SSE) exposto pelo FastAPI.
 // ---------------------------------------------------------------------------
-const agent = new HttpAgent({ url: "/agent" });
+const agent = new HttpAgent({ url: "/stream" });
 
 // ---------------------------------------------------------------------------
 // Referências de DOM
@@ -185,7 +192,11 @@ function renderSuggestions(list) {
 // renderiza o componente inline no chat, aguarda a interação do usuário, devolve o
 // resultado como ToolMessage e roda de novo — até o agente parar de chamá-las (mesmo
 // loop ReAct, fechado pelo cliente).
-async function runWithFrontendTools(params) {
+// Teto de iterações do loop de frontend tools — evita recursão sem fim caso o agente
+// fique chamando tools indefinidamente (resiliência client-side).
+const MAX_FT_ROUNDS = 25;
+
+async function runWithFrontendTools(params, depth = 0) {
   await agent.runAgent({ ...params, tools: FT_SCHEMAS });
 
   const messages = latestMessages;
@@ -236,12 +247,37 @@ async function runWithFrontendTools(params) {
     }
   }
 
-  if (executedAny) await runWithFrontendTools({ runId: crypto.randomUUID() });
+  if (executedAny) {
+    if (depth + 1 >= MAX_FT_ROUNDS) {
+      console.warn("[AG-UI] limite de rodadas de frontend tools atingido; interrompendo o loop.");
+      return;
+    }
+    await runWithFrontendTools({ runId: crypto.randomUUID() }, depth + 1);
+  }
 }
 
 // Estado de renderização (correlação por id, conforme o protocolo).
 const assistantBubbles = new Map(); // messageId -> { el, body }
 const toolCards = new Map();        // toolCallId -> { card, argsEl, resultEl, buffer }
+
+// Coalescência do render de streaming: a cada delta marca a bolha como "suja" e agenda
+// UM render por frame (requestAnimationFrame), em vez de re-renderizar o markdown inteiro
+// a cada caractere (evita custo O(n²) em respostas longas; DOM final idêntico).
+const dirtyBubbles = new Set();
+let renderScheduled = false;
+function scheduleBubbleRender(b) {
+  dirtyBubbles.add(b);
+  if (renderScheduled) return;
+  renderScheduled = true;
+  requestAnimationFrame(() => {
+    renderScheduled = false;
+    for (const bub of dirtyBubbles) {
+      bub.body.innerHTML = renderMarkdown(splitSuggestions(bub.raw).body) + '<i class="blink"></i>';
+    }
+    dirtyBubbles.clear();
+    chatEl.scrollTop = chatEl.scrollHeight;
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Helpers de UI
@@ -361,10 +397,6 @@ function logEvent(event) {
   console.log("%c[AG-UI] " + type, "color:" + ACCENT_COLOR, event);
 }
 
-function escapeHtml(s) {
-  return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-}
-
 // Extrai um texto legível do resultado de uma frontend tool (JSON ou string).
 // Ex.: '{"value":"Ver cardápio"}' → "Ver cardápio", '"O usuário confirmou."' → "Confirmado".
 function summarizeChoice(raw) {
@@ -473,8 +505,9 @@ function editState(mutator) {
 // O estado tem um objeto por FLUXO (`reservation`/`delivery`), padronizado `{ items, ...campos }`;
 // só o ATIVO (objeto não-vazio) é mostrado. Renderiza uniformemente os subcampos do fluxo ativo:
 // subcampo array (`items`) → uma linha por item (× remove o item); subcampo escalar → uma linha
-// (× limpa o campo). Ícone por subcampo via STATE_TAG_ICONS; título via STATE_TITLES (pontos de
-// domínio). O botão/popover somem quando não há fluxo ativo.
+// (× limpa o campo). Ícone por subcampo via `stateTagIcons`; título via `stateTitles` (mapas
+// fornecidos pelo backend em runtime via CUSTOM/ui_hints). O botão/popover somem quando não há
+// fluxo ativo.
 function renderSummary(state) {
   const keys = state && typeof state === "object"
     ? Object.keys(state).filter((k) => !PROTOCOL_STATE_KEYS.has(k))
@@ -516,7 +549,7 @@ function renderSummary(state) {
     summaryEl.innerHTML = "";
     return;
   }
-  const title = STATE_TITLES[flow] || "Resumo";
+  const title = stateTitles[flow] || "Resumo";
   summaryToggle.hidden = false;
   summaryToggleLabel.textContent = title;
   summaryCountEl.textContent = String(rows.length);
@@ -527,7 +560,7 @@ function renderSummary(state) {
   for (const r of rows) {
     const row = document.createElement("div");
     row.className = "summary-row";
-    const icon = STATE_TAG_ICONS[r.key];
+    const icon = stateTagIcons[r.key];
     const lead = icon
       ? `<span class="summary-icon">${escapeHtml(icon)}</span>`
       : `<span class="summary-key">${escapeHtml(humanizeLabel(r.key))}</span>`;
@@ -672,12 +705,13 @@ const subscriber = {
     if (!b) return;
     b.raw += event.delta;
     // Esconde o bloco ```suggestions do texto exibido (inclusive durante o streaming).
-    b.body.innerHTML = renderMarkdown(splitSuggestions(b.raw).body) + '<i class="blink"></i>';
-    chatEl.scrollTop = chatEl.scrollHeight;
+    // Render coalescido por frame (ver scheduleBubbleRender) — evita custo O(n²).
+    scheduleBubbleRender(b);
   },
   onTextMessageEndEvent: ({ event }) => {
     const b = assistantBubbles.get(event.messageId);
     if (b) {
+      dirtyBubbles.delete(b); // cancela qualquer render pendente; o final é definitivo
       b.el.classList.remove("streaming");
       // Sugestões = recurso do chat: extraídas da resposta do agente e viram chips.
       const { body, suggestions } = splitSuggestions(b.raw);
@@ -785,12 +819,18 @@ const subscriber = {
     applyState();
   },
 
-  // CUSTOM: HITL (on_interrupt) e estado preditivo (PredictState).
+  // CUSTOM: HITL (on_interrupt), estado preditivo (PredictState) e dicas de UI do domínio
+  // (ui_hints — ícones/títulos do resumo, fornecidos pelo backend; tratados genericamente).
   onCustomEvent: ({ event }) => {
     if (event.name === "on_interrupt") {
       showApproval(event.value);
     } else if (event.name === "PredictState") {
       predictMap = Array.isArray(event.value) ? event.value : [];
+    } else if (event.name === "ui_hints") {
+      const v = event.value && typeof event.value === "object" ? event.value : {};
+      stateTagIcons = v.state_tag_icons && typeof v.state_tag_icons === "object" ? v.state_tag_icons : {};
+      stateTitles = v.state_titles && typeof v.state_titles === "object" ? v.state_titles : {};
+      applyState(); // re-renderiza o resumo com os ícones/títulos recém-recebidos
     }
   },
 };
@@ -814,13 +854,6 @@ function humanizeLabel(key) {
     .replace(/\s+/g, " ")
     .trim()
     .replace(/^./, (c) => c.toUpperCase());
-}
-
-// Valor legível (sem JSON): arrays juntados por vírgula; objetos achatados; resto como texto.
-function humanizeValue(v) {
-  if (Array.isArray(v)) return v.map(humanizeValue).join(", ");
-  if (v && typeof v === "object") return Object.values(v).map(humanizeValue).join(", ");
-  return String(v);
 }
 
 // Renderização GENÉRICA e LEGÍVEL do interrupt (o protocolo passa `value` verbatim,
@@ -852,7 +885,7 @@ function showApproval(value) {
       const dt = document.createElement("dt");
       dt.textContent = humanizeLabel(k);
       const dd = document.createElement("dd");
-      dd.textContent = humanizeValue(val);
+      dd.textContent = summarizeValue(val);
       row.appendChild(dt);
       row.appendChild(dd);
       dl.appendChild(row);
@@ -939,7 +972,8 @@ function initIcons() {
     if (!SVG[name]) return;
     let svg = SVG[name];
     const size = el.dataset.iconSize;
-    if (size) {
+    // Valida antes de interpolar no SVG (innerHTML) — evita quebra de atributo/injeção.
+    if (size && /^[\d.]+(px|em|rem|%|pt)?$/.test(size)) {
       svg = svg.replace(/width="[^"]+"/, `width="${size}"`)
                .replace(/height="[^"]+"/, `height="${size}"`);
     }

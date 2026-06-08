@@ -32,8 +32,9 @@
       <section class="panel chat-panel is-empty">
         <div class="panel-head">
           <span class="panel-head-icon icon" data-icon="chat"></span>Chat
-          <!-- "Sua reserva": botão de ação + popover (escolhas acumuladas). Preenchido por
-               renderSummary em app.js; editável; oculto quando não há estado. -->
+          <!-- Resumo do estado: botão de ação + popover (escolhas acumuladas). Rótulo e
+               conteúdo preenchidos por renderSummary em app.js (título via ui_hints do
+               backend); editável; oculto quando não há estado. -->
           <button
             id="summary-toggle"
             class="uic-btn uic-btn--ghost uic-btn--sm summary-toggle"
@@ -42,7 +43,7 @@
             hidden
           >
             <span class="icon" data-icon="receipt"></span>
-            <span id="summary-toggle-label">Sua reserva</span>
+            <span id="summary-toggle-label">Resumo</span>
             <span class="summary-count" id="summary-count"></span>
           </button>
           <div id="summary" class="summary-popover" hidden></div>
