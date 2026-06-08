@@ -1,16 +1,41 @@
+from typing import TypedDict
+
 from app.agent.state import AgentState
 
 
+class MenuItem(TypedDict):
+    """Item de prato padronizado no rascunho (subconjunto do menu)."""
+
+    name: str
+    price: float
+
+
+class ReservationDraft(TypedDict, total=False):
+    """Rascunho da reserva de mesa. `total=False`: todos os campos são opcionais
+    (preenchidos incrementalmente conforme o cliente escolhe)."""
+
+    items: list[MenuItem]
+    date: str
+    time: str
+    party_size: int
+    customer_name: str
+
+
+class DeliveryDraft(TypedDict, total=False):
+    """Rascunho do pedido de delivery. `total=False`: campos opcionais (incrementais)."""
+
+    items: list[MenuItem]
+    customer_name: str
+    address: str
+    phone: str
+    notes: str
+
+
 class RestaurantState(AgentState):
-    """Estende `AgentState` com o estado compartilhado do negócio. Forma padronizada
-    `{ items: [{name, price}], ...campos }`; só o fluxo ATIVO fica preenchido (o outro `{}`):
-
-    - `reservation` = `{ items, date, time, party_size, customer_name }`;
-    - `delivery`    = `{ items, customer_name, address, phone, notes }`.
-
-    Mutado por tools via `Command(update={...})` → emite `STATE_SNAPSHOT`/`STATE_DELTA`.
-    Ver `update_reservation`/`update_delivery` em `tools.py`.
+    """Estende `AgentState` com o estado compartilhado do negócio. Só o fluxo ATIVO fica
+    preenchido (o outro `{}`). Mutado por tools via `Command(update={...})` → emite
+    `STATE_SNAPSHOT`/`STATE_DELTA`. Ver `update_reservation`/`update_delivery` em `tools.py`.
     """
 
-    reservation: dict
-    delivery: dict
+    reservation: ReservationDraft
+    delivery: DeliveryDraft

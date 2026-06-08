@@ -9,7 +9,7 @@ O **corpo** das rotas do agente é o `RunAgentInput` oficial do protocolo AG-UI
 ele é validado em runtime e descrito em prosa no OpenAPI (ver `app/main.py`).
 """
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -50,7 +50,7 @@ class AgentInvokeResponse(BaseModel):
         default_factory=dict,
         description="Snapshot final do estado, sem as chaves protocolares (messages/tools).",
     )
-    interrupt: Any | None = Field(
+    interrupt: dict | None = Field(
         None,
         description="Valor (app-defined) do interrupt HITL se o run pausou; null caso contrário.",
     )

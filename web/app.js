@@ -17,7 +17,8 @@ let stateTitles = {};   // { <fluxo>: <título> }
 // Constantes — fonte única para valores que aparecem em múltiplos contextos.
 const ACCENT_COLOR = "#6ea8fe";        // sincronizar com --accent em styles.css
 const STATUS_LABELS = {
-  idle: "idle", running: "running", waiting: "aguardando você", done: "done", error: "error",
+  idle: "ocioso", running: "executando", waiting: "aguardando você",
+  done: "concluído", error: "erro",
 };
 
 // Cliente AG-UI 100% GENÉRICO: renderiza apenas com o que o protocolo fornece em
@@ -102,12 +103,12 @@ function applyPredict(toolName, rawArgs) {
 }
 
 // Cria um bloco INLINE no chat onde uma frontend tool renderiza seu componente
-// interativo. Apresentado como mensagem do agente — rótulo "Agent (<duração>)",
+// interativo. Apresentado como mensagem do agente — rótulo "Agente (<duração>)",
 // espelhando a bolha de agente concluída. A `message` (pergunta vinda do arg da tool) é
 // renderizada ACIMA dos controles, no MESMO balão → uma única mensagem (texto + widget).
 // Devolve o container (nó DOM) onde o handler monta o widget.
 function createToolUiBlock(message) {
-  const label = lastRunElapsed ? agentLabelHTML(lastRunElapsed) : "Agent";
+  const label = lastRunElapsed ? agentLabelHTML(lastRunElapsed) : "Agente";
   const wrapper = document.createElement("div");
   wrapper.className = "msg-wrapper assistant tool-ui";
   wrapper.innerHTML =
@@ -320,13 +321,14 @@ let pendingAgentBlock = null; // criado em RUN_STARTED, consumido no 1º TEXT_ME
 let runBubble = null;         // bolha única do run atual (mostra só a mensagem final)
 let runStartTime = null;
 let runTimerInterval = null;
+let runActive = false;        // run em andamento (gate do send; ≠ estado visual do botão)
 let currentAction = "pensando";
 let lastRunElapsed = null;    // duração do último run finalizado (rótulo dos blocos pós-run)
 
 function formatElapsed(ms) { return (ms / 1000).toFixed(1) + "s"; }
 
 function timerLabel() {
-  return "Working… (" + formatElapsed(Date.now() - runStartTime) + " · " + currentAction + ")";
+  return "Trabalhando… (" + formatElapsed(Date.now() - runStartTime) + " · " + currentAction + ")";
 }
 
 function setAction(action) {
@@ -357,15 +359,15 @@ function setAgentStatus(wrapper, statusClass, label, icon) {
 }
 
 // Rótulo do agente com o tempo de processamento em estilo muted e fonte menor.
-// "Agent" normal + "(1.8s)" muted.
+// "Agente" normal + "(1.8s)" muted.
 function agentLabelHTML(total) {
-  return `Agent <span class="who-time">(${escapeHtml(total)})</span>`;
+  return `Agente <span class="who-time">(${escapeHtml(total)})</span>`;
 }
 
 function getAssistantBubble(messageId) {
   let entry = assistantBubbles.get(messageId);
   if (!entry) {
-    const block = createAgentWrapper("", "Agent", "");
+    const block = createAgentWrapper("", "Agente", "");
     chatEl.appendChild(block.wrapper);
     entry = { el: block.bubble, body: block.bubble, wrapper: block.wrapper, raw: block.raw };
     assistantBubbles.set(messageId, entry);
@@ -443,7 +445,7 @@ function renderState(state) {
     const typeLabel = Array.isArray(v) ? "array[" + v.length + "]" : v && typeof v === "object" ? "object" : typeof v;
     card.innerHTML =
       `<div class="s-head" role="button" tabindex="0">` +
-        `<span class="tog">▼</span>` +
+        `<span class="tog icon" aria-hidden="true">${SVG.chevron}</span>` +
         `<span class="s-key mono">${escapeHtml(k)}</span>` +
         `<span class="s-type">${typeLabel}</span>` +
       `</div>` +
@@ -456,11 +458,9 @@ function renderState(state) {
     pre.textContent = JSON.stringify(v, null, 2);
     body.appendChild(pre);
 
-    // Accordion toggle
+    // Accordion toggle (a rotação do chevron é via CSS, por `.collapsed`)
     card.querySelector(".s-head").addEventListener("click", () => {
       card.classList.toggle("collapsed");
-      const tog = card.querySelector(".tog");
-      if (tog) tog.textContent = card.classList.contains("collapsed") ? "▶" : "▼";
     });
 
     stateEl.appendChild(card);
@@ -633,7 +633,7 @@ const subscriber = {
     renderSuggestions([]);
     runStartTime = Date.now();
     currentAction = "trabalhando";
-    const block = createAgentWrapper("spinner", "Working… (0.0s · " + currentAction + ")", "");
+    const block = createAgentWrapper("spinner", "Trabalhando… (0.0s · " + currentAction + ")", "");
     chatEl.appendChild(block.wrapper);
     chatEl.scrollTop = chatEl.scrollHeight;
     pendingAgentBlock = block;
@@ -736,7 +736,7 @@ const subscriber = {
     card.className = "tool-card collapsed";
     card.innerHTML =
       `<div class="t-head mono" role="button" tabindex="0">` +
-        `<span class="tog">▶</span>` +
+        `<span class="tog icon" aria-hidden="true">${SVG.chevron}</span>` +
         `<span class="dot"></span>` +
         `<span class="tname">${escapeHtml(event.toolCallName)}</span>` +
         `<span class="tid">${escapeHtml(event.toolCallId.slice(0, 8))}</span>` +
@@ -745,11 +745,9 @@ const subscriber = {
         `<div class="field args-field" hidden><span class="lbl">argumentos</span><pre class="args pre-block"></pre></div>` +
         `<div class="field result-field" hidden><span class="lbl">resultado</span><pre class="result pre-block"></pre></div>` +
       `</div>`;
-    // Accordion toggle no header
+    // Accordion toggle no header (a rotação do chevron é via CSS, por `.collapsed`)
     card.querySelector(".t-head").addEventListener("click", () => {
       card.classList.toggle("collapsed");
-      const tog = card.querySelector(".tog");
-      if (tog) tog.textContent = card.classList.contains("collapsed") ? "▶" : "▼";
     });
     if (toolsEl.querySelector(".tab-empty")) toolsEl.innerHTML = "";
     toolsEl.appendChild(card);
@@ -839,6 +837,7 @@ agent.subscribe(subscriber);
 
 function finalizeRun(status) {
   setStatus(status);
+  runActive = false;
   for (const [, b] of assistantBubbles) b.el.classList.remove("streaming");
   sendBtn.disabled = !inputEl.value.trim();
 }
@@ -917,7 +916,8 @@ $("reject").addEventListener("click", () => resolveApproval(false));
 // Envio de mensagens
 // ---------------------------------------------------------------------------
 async function send(text) {
-  if (!text.trim() || sendBtn.disabled) return;
+  if (!text.trim() || runActive) return;
+  runActive = true;
   addUserBubble(text);
   setStatus("running");
   sendBtn.disabled = true;

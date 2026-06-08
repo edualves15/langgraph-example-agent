@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "my-agent"
 version = "0.2.0"
@@ -19,6 +23,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=9.0.3", "pytest-asyncio>=1.4.0"]
+
+# Apenas o pacote `app` é distribuível. `web/` (estáticos servidos em runtime) e `tests/`
+# não são pacotes Python — declarar explicitamente evita o erro de auto-discovery do
+# setuptools (flat-layout com múltiplos diretórios no topo: `app` e `web`).
+[tool.setuptools.packages.find]
+include = ["app*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
