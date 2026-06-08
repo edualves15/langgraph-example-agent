@@ -1,11 +1,11 @@
 """Router dos endpoints AG-UI do agente sobre LangGraph. Duas formas de consumir o mesmo
 agente (de `request.app.state.agent`, criado no lifespan — ver `app/main.py`):
 
-- `POST /agent/stream` (SSE) — superfície **canônica**: replica os primitivos oficiais
+- `POST /stream` (SSE) — superfície **canônica**: replica os primitivos oficiais
   (`agent.clone().run(input)` + `EventEncoder`), streamando campo a campo (texto token a token,
   estado, interrupt), com um **wrap fino de erro** que emite `RUN_ERROR`
   (`code="agent_run_error"`) em vez de derrubar o SSE cru.
-- `POST /agent/invoke` (JSON) — contrapartida **síncrona**: roda o agente até o fim, **agrega**
+- `POST /invoke` (JSON) — contrapartida **síncrona**: roda o agente até o fim, **agrega**
   os eventos AG-UI num único corpo JSON (`AgentInvokeResponse`), para consumidores que não
   implementam o loop de eventos.
 """
@@ -76,7 +76,7 @@ _AGENT_BODY_EXAMPLE = {
 
 
 @router.post(
-    "/agent/stream",
+    "/stream",
     summary="Executa o agente e transmite eventos AG-UI (SSE)",
     responses=_AGENT_RESPONSES,
 )
@@ -142,7 +142,7 @@ _INVOKE_RESPONSES: dict = {
 
 
 @router.post(
-    "/agent/invoke",
+    "/invoke",
     response_model=AgentInvokeResponse,
     responses=_INVOKE_RESPONSES,
     summary="Executa o agente e devolve o resultado final agregado (JSON)",
@@ -157,7 +157,7 @@ async def agent_invoke(
     request: Request,
 ) -> AgentInvokeResponse:
     """Roda o agente (`clone().run`) e devolve o **resultado final agregado** num único corpo
-    JSON (`AgentInvokeResponse`) — contrapartida síncrona do `/agent/stream`. Agrega os eventos
+    JSON (`AgentInvokeResponse`) — contrapartida síncrona do `/stream`. Agrega os eventos
     AG-UI: `content` = mensagem **final** do assistente (cada `TEXT_MESSAGE_START` reinicia o
     acúmulo → converge p/ a última, descartando preâmbulos; espelha "uma bolha por run" do
     front); `state` = último `STATE_SNAPSHOT` sem chaves protocolares; `interrupt` = `value` de

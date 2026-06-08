@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
     mcp_servers = merge_servers(general_mcp_servers(), DOMAIN.mcp_servers)
     mcp_tools = await get_mcp_tools(mcp_servers)
     graph = build_graph(DOMAIN, extra_tools=mcp_tools)
-    app.state.agent = LangGraphAgent(name="private-agent", graph=graph)
+    app.state.agent = LangGraphAgent(name="my-agent", graph=graph)
     app.state.ui_hints = DOMAIN.ui_hints
     logger.info("Agente AG-UI inicializado. Domínio=%s, MCP servers=%d, tools=%d",
                 DOMAIN.name, len(mcp_servers), len(mcp_tools))
@@ -50,17 +50,17 @@ async def lifespan(app: FastAPI):
 _APP_DESCRIPTION = (
     "Agente **LangGraph** exposto pelo protocolo oficial **AG-UI** sobre **FastAPI**.\n\n"
     "Ambas as rotas recebem um `RunAgentInput` (input **tipado** pelo modelo oficial do "
-    "protocolo). O `POST /agent/stream` devolve um stream **SSE** de eventos (superfície "
-    "canônica); o `POST /agent/invoke` devolve o resultado final **agregado** num corpo JSON "
+    "protocolo). O `POST /stream` devolve um stream **SSE** de eventos (superfície "
+    "canônica); o `POST /invoke` devolve o resultado final **agregado** num corpo JSON "
     "(`AgentInvokeResponse`). A seção **Schemas** traz os **DTOs** desta aplicação (respostas "
     "e erros) **e** o contrato de entrada do agente (`RunAgentInput` e tipos aninhados). A "
-    "saída do `/agent/stream` é um stream SSE — não modelável como corpo único —, documentada "
+    "saída do `/stream` é um stream SSE — não modelável como corpo único —, documentada "
     "como **catálogo de eventos** no 200, com referência à spec AG-UI "
     "(https://docs.ag-ui.com) e ao pacote `ag-ui-protocol`."
 )
 
 _OPENAPI_TAGS = [
-    {"name": "agent", "description": "Execução do agente (SSE) e health do agente."},
+    {"name": "agent", "description": "Execução do agente (SSE e JSON)."},
     {"name": "health", "description": "Health checks do servidor."},
 ]
 
@@ -73,7 +73,7 @@ def _docs_kwargs(enabled: bool) -> dict[str, str | None]:
 
 
 app = FastAPI(
-    title="LangGraph Private Agent — AG-UI",
+    title="My Agent — AG-UI",
     version="0.2.0",
     summary="Agente LangGraph sobre o protocolo oficial AG-UI (FastAPI).",
     description=_APP_DESCRIPTION,
@@ -86,7 +86,7 @@ app = FastAPI(
 configure_middlewares(app)
 
 # Rotas — APIRouters dedicados.
-#   POST /agent/stream (SSE + wrap de RUN_ERROR), POST /agent/invoke (JSON agregado)
+#   POST /stream (SSE + wrap de RUN_ERROR), POST /invoke (JSON agregado)
 #                                                            →  app/routers/agent.py
 #   GET  /health                                              →  app/routers/health.py
 app.include_router(agent_router.router)
@@ -94,9 +94,9 @@ app.include_router(health_router.router)
 
 
 # ---------------------------------------------------------------------------
-# OpenAPI: pós-ajuste mínimo. A saída do `/agent/stream` é SSE; o FastAPI mescla um
+# OpenAPI: pós-ajuste mínimo. A saída do `/stream` é SSE; o FastAPI mescla um
 # `application/json` default no 200 — removemos para deixar o 200 só `text/event-stream`.
-# (O `/agent/invoke` é JSON nativo e não precisa de ajuste; o input segue tipado por
+# (O `/invoke` é JSON nativo e não precisa de ajuste; o input segue tipado por
 # RunAgentInput e o restante do schema é o gerado nativamente.)
 # ---------------------------------------------------------------------------
 def _custom_openapi() -> dict:
@@ -111,7 +111,7 @@ def _custom_openapi() -> dict:
         tags=app.openapi_tags,
     )
     try:
-        ok = schema["paths"]["/agent/stream"]["post"]["responses"]["200"]
+        ok = schema["paths"]["/stream"]["post"]["responses"]["200"]
         if "content" in ok:
             ok["content"] = {"text/event-stream": ok["content"].get("text/event-stream", {})}
     except KeyError:  # rota/resposta ausente (defensivo) — não quebra a geração
@@ -146,6 +146,6 @@ async def unhandled_handler(request: Request, exc: Exception) -> JSONResponse:
 # ---------------------------------------------------------------------------
 # Página de demonstração (servida pelo próprio FastAPI)
 # ---------------------------------------------------------------------------
-# Montado por último para que /agent e /health tenham precedência.
+# Montado por último para que /stream, /invoke e /health tenham precedência.
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")

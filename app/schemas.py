@@ -33,8 +33,8 @@ class HealthResponse(BaseModel):
 
 
 class AgentInvokeResponse(BaseModel):
-    """Resultado final **agregado** de um run (rota síncrona `POST /agent/invoke`) —
-    contrapartida não-streaming do `POST /agent/stream` (SSE) para consumidores que não
+    """Resultado final **agregado** de um run (rota síncrona `POST /invoke`) —
+    contrapartida não-streaming do `POST /stream` (SSE) para consumidores que não
     implementam o loop de eventos (script, server-to-server, webhook)."""
 
     threadId: str = Field(..., description="Identificador da thread (eco do input).")

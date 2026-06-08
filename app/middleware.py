@@ -18,7 +18,7 @@ class MaxBodySizeMiddleware:
        requisições `transfer-encoding: chunked` (sem `content-length`).
 
     Só o CORPO da requisição é envolvido; o `send` (resposta) é intacto, preservando o
-    streaming SSE do `/agent`.
+    streaming SSE do `/stream`.
     """
 
     def __init__(self, app, max_bytes: int) -> None:

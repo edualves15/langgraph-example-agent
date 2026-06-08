@@ -23,7 +23,7 @@ def test_health(client):
 
 def test_cors_preflight(client):
     r = client.options(
-        "/agent/stream",
+        "/stream",
         headers={
             "Origin": "http://example.com",
             "Access-Control-Request-Method": "POST",
@@ -34,14 +34,14 @@ def test_cors_preflight(client):
 
 
 def test_invalid_body_returns_422(client):
-    r = client.post("/agent/stream", json={"not": "valid"})
+    r = client.post("/stream", json={"not": "valid"})
     assert r.status_code == 422
     assert "detail" in r.json()
 
 
 def test_agent_sse_happy_path(client):
     client.app.state.agent = StubAgent()  # eventos canônicos, sem LLM
-    r = client.post("/agent/stream", json=make_input())
+    r = client.post("/stream", json=make_input())
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/event-stream")
     types = sse_event_types(r.text)
@@ -54,7 +54,7 @@ def test_agent_emits_ui_hints_custom_after_run_started(client):
     # As dicas de UI do domínio são entregues ao front via evento CUSTOM (ui_hints),
     # logo após o RUN_STARTED. O agente é stubado; ui_hints vem do lifespan (DOMAIN).
     client.app.state.agent = StubAgent()
-    r = client.post("/agent/stream", json=make_input())
+    r = client.post("/stream", json=make_input())
     types = sse_event_types(r.text)
     assert types[0] == "RUN_STARTED"
     assert types[1] == "CUSTOM"  # emitido imediatamente após o RUN_STARTED
@@ -66,7 +66,7 @@ def test_agent_no_ui_hints_when_unset(client):
     # Sem ui_hints no app.state (domínio sem dicas), nenhum CUSTOM é emitido.
     client.app.state.agent = StubAgent()
     client.app.state.ui_hints = None
-    r = client.post("/agent/stream", json=make_input())
+    r = client.post("/stream", json=make_input())
     types = sse_event_types(r.text)
     assert "CUSTOM" not in types
 
@@ -74,7 +74,7 @@ def test_agent_no_ui_hints_when_unset(client):
 def test_agent_run_error_wrap_is_safe(client):
     # Stub levanta após o 1º evento → o wrap deve emitir RUN_ERROR genérico (sem vazar).
     client.app.state.agent = StubAgent(events=default_events(), raise_after=0)
-    r = client.post("/agent/stream", json=make_input())
+    r = client.post("/stream", json=make_input())
     assert r.status_code == 200
     types = sse_event_types(r.text)
     assert "RUN_ERROR" in types
@@ -86,7 +86,7 @@ def test_agent_run_error_wrap_is_safe(client):
 def test_agent_invoke_happy_path(client):
     # Rota síncrona: agrega os eventos do run num único corpo JSON.
     client.app.state.agent = StubAgent()  # default_events → texto "ola", sem estado/interrupt
-    r = client.post("/agent/invoke", json=make_input())
+    r = client.post("/invoke", json=make_input())
     assert r.status_code == 200
     body = r.json()
     assert body["content"] == "ola"
@@ -112,7 +112,7 @@ def test_agent_invoke_aggregates_state_and_interrupt(client):
         RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id="t", run_id="r"),
     ]
     client.app.state.agent = StubAgent(events=events)
-    body = client.post("/agent/invoke", json=make_input()).json()
+    body = client.post("/invoke", json=make_input()).json()
     assert body["content"] == "final"  # preâmbulo descartado
     assert body["state"] == {"reservation": {"party_size": 4}}  # messages/tools removidos
     assert body["interrupt"] == {"question": "Confirmar?"}
@@ -124,7 +124,7 @@ def test_agent_invoke_run_error_event_becomes_500(client):
         RunStartedEvent(type=EventType.RUN_STARTED, thread_id="t", run_id="r"),
         RunErrorEvent(type=EventType.RUN_ERROR, message="algo falhou", code="x"),
     ])
-    r = client.post("/agent/invoke", json=make_input())
+    r = client.post("/invoke", json=make_input())
     assert r.status_code == 500
     assert r.json()["detail"] == "algo falhou"
 
@@ -132,7 +132,7 @@ def test_agent_invoke_run_error_event_becomes_500(client):
 def test_agent_invoke_exception_wrap_is_safe(client):
     # Exceção crua durante o run → 500 genérico (sem vazar texto da exceção).
     client.app.state.agent = StubAgent(events=default_events(), raise_after=0)
-    r = client.post("/agent/invoke", json=make_input())
+    r = client.post("/invoke", json=make_input())
     assert r.status_code == 500
     assert "boom-secret" not in r.text and "/internal/secret/path" not in r.text
 
@@ -151,7 +151,7 @@ def test_openapi_schemas_dtos_and_input(client):
 
 
 def test_openapi_agent_operation_documented(client):
-    post = client.get("/openapi.json").json()["paths"]["/agent/stream"]["post"]
+    post = client.get("/openapi.json").json()["paths"]["/stream"]["post"]
     # 200 é só SSE (output referenciado como catálogo de eventos); erros documentados.
     assert list(post["responses"]["200"]["content"]) == ["text/event-stream"]
     assert {"413", "422", "500"} <= set(post["responses"])
@@ -182,7 +182,7 @@ def test_raw_events_filtered_when_disabled(client, monkeypatch):
         RunStartedEvent(type=EventType.RUN_STARTED, thread_id="t", run_id="r"),
         RawEvent(type=EventType.RAW, event={"x": 1}),
     ])
-    r = client.post("/agent/stream", json=make_input())
+    r = client.post("/stream", json=make_input())
     types = sse_event_types(r.text)
     assert "RUN_STARTED" in types
     assert "RAW" not in types

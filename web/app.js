@@ -32,7 +32,7 @@ globalThis.fetch = globalThis.fetch.bind(globalThis);
 // ---------------------------------------------------------------------------
 // Setup do agente oficial — aponta para o endpoint AG-UI (SSE) exposto pelo FastAPI.
 // ---------------------------------------------------------------------------
-const agent = new HttpAgent({ url: "/agent/stream" });
+const agent = new HttpAgent({ url: "/stream" });
 
 // ---------------------------------------------------------------------------
 // Referências de DOM
