@@ -49,12 +49,14 @@ async def lifespan(app: FastAPI):
 
 _APP_DESCRIPTION = (
     "Agente **LangGraph** exposto pelo protocolo oficial **AG-UI** sobre **FastAPI**.\n\n"
-    "O `POST /agent` recebe um `RunAgentInput` (input **tipado** pelo modelo oficial do "
-    "protocolo) e devolve um stream **SSE** de eventos. A seção **Schemas** traz os **DTOs** "
-    "desta aplicação (respostas e erros) **e** o contrato de entrada do agente "
-    "(`RunAgentInput` e tipos aninhados). A **saída** é um stream SSE — não modelável como "
-    "corpo único —, documentada como **catálogo de eventos** no 200 do `/agent`, com "
-    "referência à spec AG-UI (https://docs.ag-ui.com) e ao pacote `ag-ui-protocol`."
+    "Ambas as rotas recebem um `RunAgentInput` (input **tipado** pelo modelo oficial do "
+    "protocolo). O `POST /agent/stream` devolve um stream **SSE** de eventos (superfície "
+    "canônica); o `POST /agent/invoke` devolve o resultado final **agregado** num corpo JSON "
+    "(`AgentInvokeResponse`). A seção **Schemas** traz os **DTOs** desta aplicação (respostas "
+    "e erros) **e** o contrato de entrada do agente (`RunAgentInput` e tipos aninhados). A "
+    "saída do `/agent/stream` é um stream SSE — não modelável como corpo único —, documentada "
+    "como **catálogo de eventos** no 200, com referência à spec AG-UI "
+    "(https://docs.ag-ui.com) e ao pacote `ag-ui-protocol`."
 )
 
 _OPENAPI_TAGS = [
@@ -84,16 +86,18 @@ app = FastAPI(
 configure_middlewares(app)
 
 # Rotas — APIRouters dedicados.
-#   POST /agent (SSE + wrap de RUN_ERROR), GET /agent/health  →  app/routers/agent.py
+#   POST /agent/stream (SSE + wrap de RUN_ERROR), POST /agent/invoke (JSON agregado),
+#   GET /agent/health                                         →  app/routers/agent.py
 #   GET  /health                                              →  app/routers/health.py
 app.include_router(agent_router.router)
 app.include_router(health_router.router)
 
 
 # ---------------------------------------------------------------------------
-# OpenAPI: pós-ajuste mínimo. A saída do `/agent` é SSE; o FastAPI mescla um
+# OpenAPI: pós-ajuste mínimo. A saída do `/agent/stream` é SSE; o FastAPI mescla um
 # `application/json` default no 200 — removemos para deixar o 200 só `text/event-stream`.
-# (O input segue tipado por RunAgentInput e o restante do schema é o gerado nativamente.)
+# (O `/agent/invoke` é JSON nativo e não precisa de ajuste; o input segue tipado por
+# RunAgentInput e o restante do schema é o gerado nativamente.)
 # ---------------------------------------------------------------------------
 def _custom_openapi() -> dict:
     if app.openapi_schema:
@@ -107,7 +111,7 @@ def _custom_openapi() -> dict:
         tags=app.openapi_tags,
     )
     try:
-        ok = schema["paths"]["/agent"]["post"]["responses"]["200"]
+        ok = schema["paths"]["/agent/stream"]["post"]["responses"]["200"]
         if "content" in ok:
             ok["content"] = {"text/event-stream": ok["content"].get("text/event-stream", {})}
     except KeyError:  # rota/resposta ausente (defensivo) — não quebra a geração

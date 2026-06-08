@@ -50,9 +50,14 @@ curl http://localhost:8000/health
 
 # Endpoint oficial AG-UI (POST, SSE). Body = RunAgentInput (campos camelCase).
 # Nota: em PowerShell use aspas duplas escapadas: -d "{\"threadId\": \"...\"}"
-curl -N -X POST http://localhost:8000/agent \
+curl -N -X POST http://localhost:8000/agent/stream \
   -H "Content-Type: application/json" \
   -H "Accept: text/event-stream" \
+  -d '{"threadId":"t1","runId":"r1","state":{},"messages":[{"id":"m1","role":"user","content":"quanto é 15 * 4?"}],"tools":[],"context":[],"forwardedProps":{}}'
+
+# Contrapartida síncrona (mesmo body): resultado final agregado em JSON (AgentInvokeResponse).
+curl -X POST http://localhost:8000/agent/invoke \
+  -H "Content-Type: application/json" \
   -d '{"threadId":"t1","runId":"r1","state":{},"messages":[{"id":"m1","role":"user","content":"quanto é 15 * 4?"}],"tools":[],"context":[],"forwardedProps":{}}'
 ```
 
@@ -96,10 +101,11 @@ raciocínio do agente); `grep` nas camadas genéricas deve voltar vazio (exceto 
 ### Request flow
 
 ```
-GET  /            →  web/index.html (StaticFiles, html=True)
-POST /agent       →  LangGraphAgent.run(RunAgentInput) → SSE de eventos AG-UI
+GET  /             →  web/index.html (StaticFiles, html=True)
+POST /agent/stream →  LangGraphAgent.run(RunAgentInput) → SSE de eventos AG-UI
+POST /agent/invoke →  LangGraphAgent.run(RunAgentInput) → JSON agregado (AgentInvokeResponse)
 GET  /agent/health →  {"status":"ok","agent":{"name":"private-agent"}}
-GET  /health      →  {"status":"ok"}
+GET  /health       →  {"status":"ok"}
 ```
 
 **Estrutura (FastAPI):** `app/main.py` é o **composition root** — cria o
@@ -112,30 +118,43 @@ servidor), faz `build_graph(DOMAIN, extra_tools=mcp_tools)`, guarda o agente em
 **`app.state.agent`** e as dicas de UI do domínio em **`app.state.ui_hints`**
 (`DOMAIN.ui_hints`, entregues ao front pelo router do agente).
 
-- `app/routers/agent.py` (`APIRouter`): `POST /agent` replica os **primitivos oficiais**
-  (`request.app.state.agent.clone().run(input)` + `EventEncoder`) com um **wrap fino de erro**
-  — em qualquer exceção emite `RunErrorEvent` (`code="agent_run_error"`), evento canônico do
-  protocolo, em vez de derrubar o SSE (ver **Erros**); e `GET /agent/health`. Logo após o
-  primeiro `RUN_STARTED`, emite **um `CustomEvent` `name="ui_hints"`** com `app.state.ui_hints`
-  (canal oficial AG-UI, sem HTTP paralelo) — o front genérico aplica os ícones/títulos do
-  resumo de estado. Não emite nada se `ui_hints` for vazio.
+- `app/routers/agent.py` (`APIRouter`): **duas rotas para o mesmo agente** + health.
+  - `POST /agent/stream` (SSE, superfície **canônica**): replica os **primitivos oficiais**
+    (`request.app.state.agent.clone().run(input)` + `EventEncoder`) com um **wrap fino de erro**
+    — em qualquer exceção emite `RunErrorEvent` (`code="agent_run_error"`), evento canônico do
+    protocolo, em vez de derrubar o SSE (ver **Erros**). Logo após o primeiro `RUN_STARTED`,
+    emite **um `CustomEvent` `name="ui_hints"`** com `app.state.ui_hints` (canal oficial AG-UI,
+    sem HTTP paralelo) — o front genérico aplica os ícones/títulos do resumo de estado. Não
+    emite nada se `ui_hints` for vazio.
+  - `POST /agent/invoke` (JSON, **síncrono**): contrapartida não-streaming — roda o mesmo
+    `clone().run(input)` e **agrega** os eventos num `AgentInvokeResponse`: `content` = a
+    **mensagem final** do assistente (cada `TEXT_MESSAGE_START` reinicia o acúmulo → converge
+    p/ a última, descartando preâmbulos; espelha "uma bolha por run" do front), `state` = último
+    `STATE_SNAPSHOT` sem chaves protocolares (`_PROTOCOL_STATE_KEYS = {messages, tools}`),
+    `interrupt` = `value` de um `CUSTOM` `on_interrupt` (HITL) ou `null`. Um `RUN_ERROR` (evento)
+    ou qualquer exceção viram **500** (`ErrorResponse`, mensagem saneada por `describe_error`).
+    **Sem parse de suggestions** (o bloco ` ```suggestions ` vem cru no `content`; a extração é
+    só no front). Não emite `ui_hints` (canal de UI, irrelevante p/ consumidor JSON).
+  - `GET /agent/health`.
 - `app/routers/health.py` (`APIRouter`): `GET /health`.
 - **DTOs & OpenAPI** (`app/schemas.py`): respostas tipadas com Pydantic — `ErrorResponse`,
-  `HealthResponse`, `AgentInfo`, `AgentHealthResponse` (camada de servidor, genérica). Health
-  usa `response_model`; `/agent` documenta `responses` (200 `text/event-stream` + 413/422/500
-  `ErrorResponse`) e acessa o agente via helper **tipado** `get_agent(request)`. **Contrato do
-  agente (híbrido):** o **input** é tipado pelo modelo oficial `RunAgentInput` (`Body(...)` com
-  exemplo) → aparece no *Schemas* com seus aninhados; o **output** é SSE (não modelável como
-  corpo único) → documentado como **catálogo de eventos** no 200 + referência à spec/pacote
-  AG-UI. O `app.openapi` (`_custom_openapi` em `main.py`) faz só um ajuste mínimo: deixar o 200
-  do `/agent` como `text/event-stream` (remove o `application/json` que o FastAPI mescla).
-  `/docs`,`/redoc`,`/openapi.json` ligáveis por `APP_ENABLE_DOCS` (`_docs_kwargs`).
+  `HealthResponse`, `AgentInfo`, `AgentHealthResponse`, `AgentInvokeResponse` (camada de
+  servidor, genérica). Health e `/agent/invoke` usam `response_model`; `/agent/stream` documenta
+  `responses` (200 `text/event-stream` + 413/422/500 `ErrorResponse`) e acessa o agente via
+  helper **tipado** `get_agent(request)`. **Contrato do agente (híbrido):** o **input** (ambas
+  as rotas) é tipado pelo modelo oficial `RunAgentInput` (`Body(...)` com exemplo) → aparece no
+  *Schemas* com seus aninhados; o **output** do `/agent/stream` é SSE (não modelável como corpo
+  único) → documentado como **catálogo de eventos** no 200 + referência à spec/pacote AG-UI; o
+  do `/agent/invoke` é o `AgentInvokeResponse` (JSON nativo). O `app.openapi` (`_custom_openapi`
+  em `main.py`) faz só um ajuste mínimo: deixar o 200 do `/agent/stream` como `text/event-stream`
+  (remove o `application/json` que o FastAPI mescla). `/docs`,`/redoc`,`/openapi.json` ligáveis
+  por `APP_ENABLE_DOCS` (`_docs_kwargs`).
 - `app/middleware.py` (`configure_middlewares`): **CORS** (`CORSMiddleware`) — permite que
   qualquer frontend AG-UI de outra origem consuma o agente. Origens via `AG_UI_CORS_ORIGINS`
   (default `*`); conforme a spec, credenciais só ligam com origens explícitas (wildcard `*` é
   incompatível com `allow_credentials=True`).
 - Os `@app.exception_handler` (validação/Exception) ficam em `main.py`. O `StaticFiles` é
-  montado em `/` **por último** para não capturar `/agent`/`/health`.
+  montado em `/` **por último** para não capturar `/agent/*`/`/health`.
 - **MCP** (`app/services/mcp_service.py`): scaffold oficial via `MultiServerMCPClient`
   (`langchain-mcp-adapters`). **Duas origens** de servidores (convenção `mcpServers`),
   unidas no lifespan: **gerais** (`mcp.json` na raiz, capabilities sem domínio) e **de
@@ -235,7 +254,7 @@ Página estática servida pelo FastAPI, sem build step:
 - `index.html` — painel de chat + lateral (abas estado/tool calls/eventos). Sem literais do
   agente (slot de sugestões vazio; painel de estado genérico). Os componentes interativos
   são montados inline no chat (não há painel lateral de frontend tools).
-- `app.js` — `new HttpAgent({ url: "/agent" })` + `agent.subscribe(subscriber)`.
+- `app.js` — `new HttpAgent({ url: "/agent/stream" })` + `agent.subscribe(subscriber)`.
   O subscriber implementa um handler por categoria (`onTextMessageContentEvent`,
   `onToolCallStartEvent`, `onStateSnapshotEvent`, `onCustomEvent`, …) e o catch-all
   `onEvent` loga cada evento no painel e no `console`.
@@ -418,11 +437,16 @@ adicionar/alterar uma tool, atualize a docstring** (não o `system.md`).
 - Handlers globais em `app/main.py`: `RequestValidationError` → 422 JSON limpo;
   `Exception` → 500 JSON com `describe_error` (cliente) + `error_hint` (log). Cobrem erros
   **pré-stream**/validação.
-- **Stream `/agent`** (wrap fino): o gerador envolve `agent.run()` em `try/except`; em erro
+- **Stream `/agent/stream`** (wrap fino): o gerador envolve `agent.run()` em `try/except`; em erro
   loga **uma linha** (sem traceback) e emite um `RunErrorEvent`
   (`type=RUN_ERROR, code="agent_run_error"`) — evento **canônico** do protocolo — antes de
   fechar o stream. (A lib também emite `RUN_ERROR` para eventos `"error"` do LangGraph; o
   wrap cobre as exceções Python cruas que ela não trata.)
+- **JSON `/agent/invoke`** (síncrono): mesmo agente, sem stream. Agrega os eventos do run e,
+  em falha, responde **500** (`ErrorResponse`): um evento `RUN_ERROR` vira `HTTPException(500,
+  message)`; exceção crua é logada (`error_hint`, só no log) e vira `HTTPException(500,
+  describe_error(exc))` — cliente recebe mensagem genérica/segura. `CancelledError` (disconnect)
+  aborta limpo.
 
 ## Segurança
 
@@ -445,9 +469,10 @@ Implementado:
 - **Limite de corpo:** `MaxBodySizeMiddleware` (ASGI puro, não bufferiza o SSE) recusa POST
   acima de `AG_UI_MAX_BODY_BYTES` (413) — por `content-length` **e** contando bytes em
   streaming (cobre `transfer-encoding: chunked` sem header).
-- **Resiliência do stream:** o gerador do `/agent` trata `asyncio.CancelledError` (disconnect
-  do cliente) abortando limpo sem emitir `RUN_ERROR`; o loop de frontend tools no `app.js`
-  tem teto de rodadas (`MAX_FT_ROUNDS`) contra recursão sem fim.
+- **Resiliência do stream:** o gerador do `/agent/stream` trata `asyncio.CancelledError`
+  (disconnect do cliente) abortando limpo sem emitir `RUN_ERROR` (o `/agent/invoke` também
+  trata o `CancelledError`); o loop de frontend tools no `app.js` tem teto de rodadas
+  (`MAX_FT_ROUNDS`) contra recursão sem fim.
 - **MCP resiliente:** `get_mcp_tools` isola falha por servidor (um servidor com erro é logado
   e pulado, não derruba o startup); `_merge_backend_tools` impede que uma tool MCP sombreie/
   duplique uma tool de backend confiável (dedup por nome, backend vence).

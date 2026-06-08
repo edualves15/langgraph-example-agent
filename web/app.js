@@ -30,9 +30,9 @@ const STATUS_LABELS = {
 globalThis.fetch = globalThis.fetch.bind(globalThis);
 
 // ---------------------------------------------------------------------------
-// Setup do agente oficial — aponta para o endpoint AG-UI exposto pelo FastAPI.
+// Setup do agente oficial — aponta para o endpoint AG-UI (SSE) exposto pelo FastAPI.
 // ---------------------------------------------------------------------------
-const agent = new HttpAgent({ url: "/agent" });
+const agent = new HttpAgent({ url: "/agent/stream" });
 
 // ---------------------------------------------------------------------------
 // Referências de DOM

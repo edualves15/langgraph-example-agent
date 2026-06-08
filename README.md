@@ -52,20 +52,28 @@ Abra `http://localhost:8000/` para o chat de demonstração.
 Endpoint AG-UI (POST, SSE). O corpo é um `RunAgentInput` (campos camelCase):
 
 ```bash
-curl -N -X POST http://localhost:8000/agent \
+curl -N -X POST http://localhost:8000/agent/stream \
   -H "Content-Type: application/json" -H "Accept: text/event-stream" \
   -d '{"threadId":"t1","runId":"r1","state":{},"messages":[{"id":"m1","role":"user","content":"quanto é 15 * 4?"}],"tools":[],"context":[],"forwardedProps":{}}'
 ```
 
-Rotas: `POST /agent` (SSE) · `GET /agent/health` · `GET /health`.
+Contrapartida síncrona (mesmo corpo, resultado final agregado em JSON):
+
+```bash
+curl -X POST http://localhost:8000/agent/invoke \
+  -H "Content-Type: application/json" \
+  -d '{"threadId":"t1","runId":"r1","state":{},"messages":[{"id":"m1","role":"user","content":"quanto é 15 * 4?"}],"tools":[],"context":[],"forwardedProps":{}}'
+```
+
+Rotas: `POST /agent/stream` (SSE) · `POST /agent/invoke` (JSON) · `GET /agent/health` · `GET /health`.
 
 **Documentação da API (Swagger):** `GET /docs` (Swagger UI), `/redoc` e `/openapi.json`
 (habilitados por default; desligue em produção com `APP_ENABLE_DOCS=false`). Respostas e
 erros são modelos Pydantic tipados (`ErrorResponse`, `HealthResponse`, `AgentHealthResponse`,
-`AgentInfo`). O **input** do `/agent` é tipado pelo modelo oficial `RunAgentInput` (aparece no
-**Schemas**, com exemplo no "Try it out"). O **output** é um stream **SSE** — não modelável
-como corpo único —, documentado como **catálogo de eventos** no `200`, com referência à spec
-AG-UI e ao pacote `ag-ui-protocol`.
+`AgentInfo`, `AgentInvokeResponse`). O **input** das rotas do agente é tipado pelo modelo
+oficial `RunAgentInput` (aparece no **Schemas**, com exemplo no "Try it out"). O `/agent/stream`
+devolve um stream **SSE** — não modelável como corpo único —, documentado como **catálogo de
+eventos** no `200`; o `/agent/invoke` devolve o `AgentInvokeResponse` (JSON).
 
 ---
 
@@ -81,7 +89,8 @@ dicas de UI do domínio em `app.state.ui_hints` (entregues ao front via evento `
 
 | Componente | Onde | Função |
 |---|---|---|
-| `POST /agent` | `app/routers/agent.py` | Stream SSE: `agent.clone().run(input)` + `EventEncoder`, com **wrap de `RUN_ERROR`** |
+| `POST /agent/stream` | `app/routers/agent.py` | Stream SSE: `agent.clone().run(input)` + `EventEncoder`, com **wrap de `RUN_ERROR`** |
+| `POST /agent/invoke` | `app/routers/agent.py` | JSON síncrono: agrega os eventos do run num `AgentInvokeResponse` (`content`/`state`/`interrupt`) |
 | `GET /agent/health`, `GET /health` | `app/routers/agent.py`, `health.py` | Health checks |
 | CORS + limite de corpo | `app/middleware.py` | `configure_middlewares(app)` |
 | Página estática | `app/main.py` | `StaticFiles` montado em `/` por último |
@@ -112,7 +121,7 @@ e `delivery`, o estado compartilhado). O `checkpointer` é `MemorySaver` (thread
 Cliente AG-UI **agnóstico de agente**: renderiza apenas com o que o protocolo fornece em
 runtime (eventos SSE via `@ag-ui/client`).
 
-- `app.js` — cria `HttpAgent({ url: "/agent" })`, assina os eventos, mantém uma bolha por
+- `app.js` — cria `HttpAgent({ url: "/agent/stream" })`, assina os eventos, mantém uma bolha por
   `runId`, renderiza o painel de estado genericamente e executa as tools de frontend.
 - `frontend-tools.js` — tools de **UI genéricas** anunciadas ao agente: `present_cards`,
   `present_options`, `present_buttons`, `present_number`, `confirm_dialog`. O
@@ -148,7 +157,7 @@ app/
   config.py          Settings (pydantic-settings)
   middleware.py      CORS + limite de corpo (configure_middlewares)
   errors.py          describe_error (cliente) / error_hint (log)
-  routers/           agent.py (POST /agent, GET /agent/health) · health.py (GET /health)
+  routers/           agent.py (POST /agent/stream, POST /agent/invoke, GET /agent/health) · health.py (GET /health)
   agent/             ENGINE genérico: graph.py · state.py (AgentState base) · domain.py (contrato
                        Domain) · prompts/ (system.md genérico + composição)
   registries/        tool_registry.py (só capabilities genéricas: calendário + math + web)
@@ -313,7 +322,7 @@ Mitigações implementadas:
 - **Limite de corpo:** `MaxBodySizeMiddleware` (ASGI, não bufferiza o SSE) recusa POST acima
   de `AG_UI_MAX_BODY_BYTES` (413) — por `content-length` e contando bytes em streaming
   (cobre `transfer-encoding: chunked`).
-- **Resiliência do stream:** o `/agent` aborta limpo no disconnect do cliente
+- **Resiliência do stream:** o `/agent/stream` aborta limpo no disconnect do cliente
   (`asyncio.CancelledError`); o loop de frontend tools tem teto de rodadas.
 - **MCP resiliente:** falha de um servidor é isolada (logada e pulada); tools MCP não podem
   sombrear tools de backend confiáveis (dedup de nomes). Ver [MCP](#mcp-model-context-protocol).
