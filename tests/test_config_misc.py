@@ -19,7 +19,6 @@ def test_get_llm_selects_provider(monkeypatch):
     import app.services.llm_service as llm
 
     monkeypatch.setattr(llm.settings, "llm_api_key", "k")
-    monkeypatch.setattr(llm.settings, "llm_tool_emulation", False)
 
     monkeypatch.setattr(llm.settings, "llm_provider", "google")
     assert type(llm.get_llm()).__name__ == "ChatGoogleGenerativeAI"
@@ -28,16 +27,6 @@ def test_get_llm_selects_provider(monkeypatch):
     monkeypatch.setattr(llm.settings, "llm_api_key", "")
     with pytest.raises(ValueError, match="LLM_API_KEY"):
         llm.get_llm()
-
-
-def test_get_llm_wraps_emulation_layer(monkeypatch):
-    import app.services.llm_service as llm
-    from app.agent.tool_emulation import ToolCallingEmulationLayer
-
-    monkeypatch.setattr(llm.settings, "llm_provider", "google")
-    monkeypatch.setattr(llm.settings, "llm_api_key", "k")
-    monkeypatch.setattr(llm.settings, "llm_tool_emulation", True)
-    assert isinstance(llm.get_llm(), ToolCallingEmulationLayer)
 
 
 def test_cors_origins_parsing():

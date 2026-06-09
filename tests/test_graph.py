@@ -32,16 +32,6 @@ def test_build_graph_accepts_extra_tools():
     assert build_graph(DOMAIN, extra_tools=[]) is not None
 
 
-def test_build_graph_compiles_with_emulation_layer(monkeypatch):
-    # Com a camada de emulação ligada, o grafo (transparente à camada) ainda compila.
-    import app.services.llm_service as llm
-
-    monkeypatch.setattr(llm.settings, "llm_tool_emulation", True)
-    monkeypatch.setattr(llm.settings, "llm_api_key", "k")
-    graph = build_graph(DOMAIN)
-    assert {"agent", "tools"} <= set(graph.get_graph().nodes)
-
-
 def test_merge_backend_tools_dedups_collisions():
     @tool
     def get_menu() -> str:

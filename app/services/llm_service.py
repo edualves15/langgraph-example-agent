@@ -7,14 +7,10 @@ do provider. Para um provider novo, adicione um `if`.
 
 Os pacotes de cada provider são **dependências opcionais** (extras do `pyproject.toml`): só o
 do provider selecionado precisa estar instalado (import lazy + erro claro se faltar).
-
-Se `LLM_TOOL_EMULATION` estiver ligado, o modelo é embrulhado pela camada de emulação de tool
-calling (`app/agent/tool_emulation.py`) — ver lá.
 """
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from app.agent.tool_emulation import ToolCallingEmulationLayer
 from app.config import settings
 
 # Modelo default por provider (o .env não carrega nome de modelo). Edite aqui.
@@ -110,9 +106,5 @@ def _build_model() -> BaseChatModel:
 
 
 def get_llm() -> BaseChatModel:
-    """Devolve o chat model do provider configurado, opcionalmente embrulhado pela camada
-    de emulação de tool calling (`LLM_TOOL_EMULATION`)."""
-    model = _build_model()
-    if settings.llm_tool_emulation:
-        return ToolCallingEmulationLayer(model)
-    return model
+    """Devolve o chat model do provider configurado (`LLM_PROVIDER`)."""
+    return _build_model()

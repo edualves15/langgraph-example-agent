@@ -18,8 +18,6 @@ class Settings(BaseSettings):
     llm_base_url: str = Field(
         "", description="Base URL p/ ollama e p/ o provider custom (vazia nos providers cloud).")
     llm_temperature: float = Field(0.0, ge=0, description="Temperatura do modelo.")
-    llm_tool_emulation: bool = Field(
-        False, description="Liga a CAMADA de emulação (modelos sem tool calling/streaming nativo).")
 
     # ── AG-UI (protocolo/wire) — única var com o prefixo AG_UI_ ───────────────────────────
     ag_ui_stream_raw_events: bool = Field(

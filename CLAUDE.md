@@ -417,26 +417,16 @@ central. `get_llm()` valida a chave do provider que exige (fail-fast no startup,
 
 #### Contrato do provider (o que é REQUISITO vs OPCIONAL)
 
-- **Tool calling = REQUISITO** — nativo **ou** emulado (ver abaixo). Toda a arquitetura
-  (tools de backend/frontend, HITL) depende de `AIMessage.tool_calls`.
+- **Tool calling = REQUISITO** — **nativo**. Toda a arquitetura (tools de backend/frontend, HITL)
+  depende de `AIMessage.tool_calls`. O LangGraph **não emula** (`bind_tools` por padrão
+  `raise NotImplementedError`); quem provê é a integração do provider (`ChatOpenAI`/`ChatAnthropic`/
+  `ChatGoogleGenerativeAI`/`ChatOllama`). Universal nos providers reais.
 - **Structured output = OPCIONAL** — o projeto não usa `with_structured_output`/`response_format`
   (estado vem de `Command`; sugestões são texto ` ```suggestions `).
-- **Streaming de tokens = OPCIONAL** — sem ele o backend roteia por `AIMessage.tool_calls` e o
-  front lê das mensagens reconstruídas; o **texto** do assistente, porém, só renderiza no chat
-  via eventos `TEXT_MESSAGE_*`. Para providers que **não streamam** (devolvem JSON pronto), ligue
-  a **camada de emulação**, que emite o texto pelo hook oficial (ver abaixo).
-
-#### Camada de emulação (`app/agent/tool_emulation.py`)
-
-`LLM_TOOL_EMULATION=true` faz `get_llm()` **embrulhar** o modelo na `ToolCallingEmulationLayer`.
-É uma **camada** fina e transparente: expõe a **mesma interface** que o grafo usa
-(`bind_tools(...).ainvoke(...) → AIMessage` com `tool_calls`), então **`graph.py` não tem
-nenhum `if`**. Ela (1) injeta as ferramentas no prompt e faz **parse** da saída textual de volta
-em `tool_calls` (1 call por turno; helpers `render_tool_instructions`/`parse_tool_call`), e
-(2) como faz uma chamada única (sem streaming), emite o **texto** do assistente pelo hook
-**oficial** da lib (evento custom `manually_emit_message` → vira `TEXT_MESSAGE_*` no router) —
-assim modelos sem function calling nativo **e/ou** sem streaming funcionam. É a **única** peça
-que conhece esse "truque". Limitação: fallback best-effort (depende de o modelo emitir o JSON).
+- **Streaming de tokens = OPCIONAL/transparente** — o LangChain streama se o provider permite
+  (todos os reais permitem) e o AG-UI mapeia em `TEXT_MESSAGE_*`. O backend roteia por
+  `AIMessage.tool_calls` independ. de streaming; só o **texto** do chat depende dos eventos de
+  streaming (um provider puramente não-streaming não renderia texto — caso fora de escopo).
 
 ### Prompts (`app/agent/prompts/`)
 
@@ -548,7 +538,6 @@ Copy `.env.example` to `.env`. Required keys:
 | `LLM_API_KEY` | — | Chave do provider (alias aceito: `GEMINI_API_KEY`). Required pelos providers que exigem. |
 | `LLM_BASE_URL` | — | Base URL p/ `ollama` e p/ o provider `custom` (proxy OpenAI-compatível). Vazia nos cloud. |
 | `LLM_TEMPERATURE` | `0.0` | Temperatura do modelo. |
-| `LLM_TOOL_EMULATION` | `false` | Liga a camada de emulação (modelos sem tool calling/streaming nativo). |
 | `AG_UI_STREAM_RAW_EVENTS` | `true` | When `false`, omits `RAW` events (LangChain callback passthrough) from the SSE stream. |
 | `APP_CORS_ORIGINS` | `*` | Origens permitidas via CORS (CSV). `*` libera todas; com origens explícitas, credenciais são habilitadas. |
 | `APP_MAX_BODY_BYTES` | `2000000` | Tamanho máximo do corpo de uma requisição (bytes). `0` desabilita o limite. |
