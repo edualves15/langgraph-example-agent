@@ -26,20 +26,6 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 
-def _require_api_key() -> None:
-    """Falha cedo (no startup) se a chave do provedor de IA não estiver configurada.
-
-    Sem isso o servidor sobe normalmente e só falha com um 500 genérico na 1ª requisição
-    ao LLM — um erro de configuração que fica escondido. Aqui ele vira uma falha clara de
-    inicialização (o lifespan aborta o startup).
-    """
-    if not settings.gemini_api_key.strip():
-        raise RuntimeError(
-            "GEMINI_API_KEY não configurada. Defina-a no ambiente ou no arquivo .env "
-            "(ver .env.example) antes de iniciar o servidor."
-        )
-
-
 # ---------------------------------------------------------------------------
 # Lifespan — inicialização assíncrona dos recursos (padrão oficial FastAPI).
 # Composition root: monta o engine genérico com o `DOMAIN` escolhido (único lugar que
@@ -50,7 +36,9 @@ def _require_api_key() -> None:
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _require_api_key()
+    # Fail-fast de config: build_graph chama get_llm(), que valida a chave do provider
+    # (provider-aware, em app/services/llm_service.py) — config inválida aborta o startup
+    # com erro claro, em vez de 500 genérico na 1ª requisição ao LLM.
     mcp_servers = merge_servers(general_mcp_servers(), DOMAIN.mcp_servers)
     mcp_tools = await get_mcp_tools(mcp_servers)
     graph = build_graph(DOMAIN, extra_tools=mcp_tools)

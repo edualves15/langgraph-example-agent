@@ -74,7 +74,7 @@ async def get_mcp_tools(servers: dict | None = None) -> list[BaseTool]:
         servers = general_mcp_servers()
     if not servers:
         return []
-    timeout = settings.ag_ui_mcp_startup_timeout
+    timeout = settings.app_mcp_startup_timeout
     tools: list[BaseTool] = []
     for name, cfg in servers.items():
         # Um client por servidor (não um único `MultiServerMCPClient` com todos): assim a

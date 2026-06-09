@@ -23,6 +23,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=9.0.3", "pytest-asyncio>=1.4.0"]
+# Providers de LLM são opcionais: instale só o do provider escolhido em LLM_PROVIDER.
+# google já está nas deps centrais (provider default). O extra `openai` também atende o
+# provider `custom` (proxy OpenAI-compatível).
+openai = ["langchain-openai>=0.3"]
+anthropic = ["langchain-anthropic>=0.3"]
+ollama = ["langchain-ollama>=0.3"]
 
 # Apenas o pacote `app` é distribuível. `web/` (estáticos servidos em runtime) e `tests/`
 # não são pacotes Python — declarar explicitamente evita o erro de auto-discovery do

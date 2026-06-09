@@ -61,7 +61,7 @@ class _SlowClient:
 
 def test_get_mcp_tools_skips_server_on_timeout(monkeypatch):
     monkeypatch.setattr(m, "MultiServerMCPClient", _SlowClient)
-    monkeypatch.setattr(m.settings, "ag_ui_mcp_startup_timeout", 0.05)
+    monkeypatch.setattr(m.settings, "app_mcp_startup_timeout", 0.05)
     servers = {"ok1": {"url": "x"}, "slow": {"url": "y"}, "ok2": {"url": "z"}}
     tools = asyncio.run(m.get_mcp_tools(servers))
     # 'slow' estoura o timeout e é pulado; os dois rápidos entram (startup não trava).

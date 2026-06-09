@@ -1,40 +1,43 @@
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore")
+        env_file=".env", env_file_encoding="utf-8", extra="ignore", populate_by_name=True)
 
-    gemini_api_key: str = Field("", description="Chave da API Gemini (obrigatória em runtime).")
-    gemini_model: str = Field("gemini-3.1-flash-lite", description="Nome do modelo Gemini.")
+    # ── LLM ──────────────────────────────────────────────────────────────────────────────
+    # O nome do provider é a ÚNICA chave de seleção; o mapeamento provider→classe/modelo vive
+    # em `app/services/llm_service.py` (único ponto que lida com LLM). `url`/`api_key` servem
+    # ao provider custom (e a quem precisar de base_url, como ollama/proxies).
+    llm_provider: str = Field(
+        "google", description="google | openai | anthropic | ollama | <qualquer outro = custom>.")
+    llm_api_key: str = Field(
+        "", validation_alias=AliasChoices("LLM_API_KEY", "GEMINI_API_KEY"),
+        description="Chave do provider selecionado (vazia p/ ollama/local).")
+    llm_base_url: str = Field(
+        "", description="Base URL p/ ollama e p/ o provider custom (vazia nos providers cloud).")
+    llm_temperature: float = Field(0.0, ge=0, description="Temperatura do modelo.")
+    llm_tool_emulation: bool = Field(
+        False, description="Liga a CAMADA de emulação (modelos sem tool calling/streaming nativo).")
 
+    # ── AG-UI (protocolo/wire) — única var com o prefixo AG_UI_ ───────────────────────────
     ag_ui_stream_raw_events: bool = Field(
         True, description="Se False, omite eventos RAW do stream SSE do /stream.")
 
-    # Origens permitidas via CORS (separadas por vírgula). "*" libera todas.
-    ag_ui_cors_origins: str = Field(
+    # ── Aplicação/servidor (prefixo APP_) ────────────────────────────────────────────────
+    app_cors_origins: str = Field(
         "*", description="Origens CORS permitidas (CSV). '*' libera todas.")
-
-    # Tamanho máximo do corpo de uma requisição (bytes). Protege contra POSTs gigantes
-    # (DoS de memória). Default generoso; 0 desabilita o limite.
-    ag_ui_max_body_bytes: int = Field(
+    app_max_body_bytes: int = Field(
         2_000_000, ge=0, description="Tamanho máx. do corpo (bytes); 0 desabilita.")
-
-    # Timeout (s) por servidor MCP ao carregar tools no startup. Evita que um servidor
-    # pendurado trave a inicialização (o servidor que estoura é logado e pulado). 0 desliga.
-    ag_ui_mcp_startup_timeout: float = Field(
+    app_mcp_startup_timeout: float = Field(
         15.0, ge=0, description="Timeout (s) por servidor MCP no startup; 0 desabilita.")
-
-    # Documentação OpenAPI: config de APLICAÇÃO (não do protocolo AG-UI) — por isso SEM o
-    # prefixo `AG_UI_`. Em produção, desabilitar /docs, /redoc e /openapi.json é prática
-    # recomendada (reduz a superfície/exposição da API).
     app_enable_docs: bool = Field(
         True, description="Se False, desabilita /docs, /redoc e /openapi.json (produção).")
 
     @property
     def cors_origins(self) -> list[str]:
-        return [o.strip() for o in self.ag_ui_cors_origins.split(",") if o.strip()]
+        return [o.strip() for o in self.app_cors_origins.split(",") if o.strip()]
 
 
 settings = Settings()

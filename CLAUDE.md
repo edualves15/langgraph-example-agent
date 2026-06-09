@@ -120,9 +120,10 @@ GET  /health       →  {"status":"ok"}
 **Estrutura (FastAPI):** `app/main.py` é o **composition root** — cria o
 `FastAPI(lifespan=...)`, chama `configure_middlewares(app)` e inclui os routers. É o **único**
 lugar que conhece engine + domínio: importa `DOMAIN` (`from app.domain.restaurant import
-DOMAIN`). **Lifespan** (padrão oficial p/ recursos async): primeiro **fail-fast** de config
-via `_require_api_key()` (aborta o startup com erro claro se `GEMINI_API_KEY` estiver vazia,
-em vez de subir e falhar com 500 genérico na 1ª requisição ao LLM); depois une os servidores
+DOMAIN`). **Lifespan** (padrão oficial p/ recursos async): **fail-fast** de config implícito —
+`build_graph(...)` chama `get_llm()`, que valida a chave do provider (provider-aware, em
+`llm_service`); config inválida **aborta o startup** com erro claro, em vez de subir e falhar
+com 500 genérico na 1ª requisição ao LLM. Une os servidores
 MCP gerais (`general_mcp_servers()`, da raiz) com os do domínio (`DOMAIN.mcp_servers`) via
 `merge_servers(...)`, carrega as tools (`get_mcp_tools(servers)`, com isolamento de falha por
 servidor), faz `build_graph(DOMAIN, extra_tools=mcp_tools)`, guarda o agente em
@@ -162,7 +163,7 @@ servidor), faz `build_graph(DOMAIN, extra_tools=mcp_tools)`, guarda o agente em
   (remove o `application/json` que o FastAPI mescla). `/docs`,`/redoc`,`/openapi.json` ligáveis
   por `APP_ENABLE_DOCS` (`_docs_kwargs`).
 - `app/middleware.py` (`configure_middlewares`): **CORS** (`CORSMiddleware`) — permite que
-  qualquer frontend AG-UI de outra origem consuma o agente. Origens via `AG_UI_CORS_ORIGINS`
+  qualquer frontend AG-UI de outra origem consuma o agente. Origens via `APP_CORS_ORIGINS`
   (default `*`); conforme a spec, credenciais só ligam com origens explícitas (wildcard `*` é
   incompatível com `allow_credentials=True`).
 - Os `@app.exception_handler` (validação/Exception) ficam em `main.py`. O `StaticFiles` é
@@ -175,7 +176,7 @@ servidor), faz `build_graph(DOMAIN, extra_tools=mcp_tools)`, guarda o agente em
   `general_mcp_servers()`, `merge_servers(*dicts)` (colisão de nome de servidor → 1º vence,
   com aviso) e `get_mcp_tools(servers)` (**isola falha por servidor**: um client
   `MultiServerMCPClient` **por servidor** — escolha deliberada para isolar erro/timeout de um
-  servidor dos demais; um servidor com erro **ou que estoura `AG_UI_MCP_STARTUP_TIMEOUT`** é
+  servidor dos demais; um servidor com erro **ou que estoura `APP_MCP_STARTUP_TIMEOUT`** é
   logado e pulado, não derruba o startup). As tools entram no grafo por
   `build_graph(DOMAIN, extra_tools=...)`, que **deduplica nomes** (backend confiável vence).
 
@@ -404,7 +405,38 @@ servidores MCP (`mcp.json` geral ou `Domain.mcp_servers`); ver **MCP**.
 
 ### LLM provider
 
-`app/services/llm_service.py` — único ponto para trocar de provider. Atual: Gemini (`ChatGoogleGenerativeAI`).
+`app/services/llm_service.py` é o **único ponto** que lida com LLM. `get_llm()` seleciona o
+provider pelo **nome** (`LLM_PROVIDER`) via `if`s: `google` (`ChatGoogleGenerativeAI`, default),
+`openai` (`ChatOpenAI`), `anthropic` (`ChatAnthropic`), `ollama` (`ChatOllama`) e, para qualquer
+outro nome, um ramo **custom** (assume API OpenAI-compatível — padrão de proxies corporativos —
+com `LLM_BASE_URL`/`LLM_API_KEY` nuláveis). O **`.env` só guarda o nome do provider** (+
+`LLM_API_KEY`/`LLM_BASE_URL`); o **modelo default por provider** vive em `_DEFAULT_MODELS`
+(aqui, não no `.env`). Os pacotes de cada provider são **extras opcionais** do `pyproject`
+(`openai`/`anthropic`/`ollama`), com import **lazy** e erro claro se faltar; `google` é dep
+central. `get_llm()` valida a chave do provider que exige (fail-fast no startup, via lifespan).
+
+#### Contrato do provider (o que é REQUISITO vs OPCIONAL)
+
+- **Tool calling = REQUISITO** — nativo **ou** emulado (ver abaixo). Toda a arquitetura
+  (tools de backend/frontend, HITL) depende de `AIMessage.tool_calls`.
+- **Structured output = OPCIONAL** — o projeto não usa `with_structured_output`/`response_format`
+  (estado vem de `Command`; sugestões são texto ` ```suggestions `).
+- **Streaming de tokens = OPCIONAL** — sem ele o backend roteia por `AIMessage.tool_calls` e o
+  front lê das mensagens reconstruídas; o **texto** do assistente, porém, só renderiza no chat
+  via eventos `TEXT_MESSAGE_*`. Para providers que **não streamam** (devolvem JSON pronto), ligue
+  a **camada de emulação**, que emite o texto pelo hook oficial (ver abaixo).
+
+#### Camada de emulação (`app/agent/tool_emulation.py`)
+
+`LLM_TOOL_EMULATION=true` faz `get_llm()` **embrulhar** o modelo na `ToolCallingEmulationLayer`.
+É uma **camada** fina e transparente: expõe a **mesma interface** que o grafo usa
+(`bind_tools(...).ainvoke(...) → AIMessage` com `tool_calls`), então **`graph.py` não tem
+nenhum `if`**. Ela (1) injeta as ferramentas no prompt e faz **parse** da saída textual de volta
+em `tool_calls` (1 call por turno; helpers `render_tool_instructions`/`parse_tool_call`), e
+(2) como faz uma chamada única (sem streaming), emite o **texto** do assistente pelo hook
+**oficial** da lib (evento custom `manually_emit_message` → vira `TEXT_MESSAGE_*` no router) —
+assim modelos sem function calling nativo **e/ou** sem streaming funcionam. É a **única** peça
+que conhece esse "truque". Limitação: fallback best-effort (depende de o modelo emitir o JSON).
 
 ### Prompts (`app/agent/prompts/`)
 
@@ -481,7 +513,7 @@ Implementado:
 - **Info-disclosure:** erros ao cliente são genéricos (`describe_error`); detalhe só no log
   (`error_hint`).
 - **Limite de corpo:** `MaxBodySizeMiddleware` (ASGI puro, não bufferiza o SSE) recusa POST
-  acima de `AG_UI_MAX_BODY_BYTES` (413) — por `content-length` **e** contando bytes em
+  acima de `APP_MAX_BODY_BYTES` (413) — por `content-length` **e** contando bytes em
   streaming (cobre `transfer-encoding: chunked` sem header).
 - **Resiliência do stream:** o gerador do `/stream` trata `asyncio.CancelledError`
   (disconnect do cliente) abortando limpo sem emitir `RUN_ERROR` (o `/invoke` também
@@ -494,7 +526,7 @@ Implementado:
 
 Limitações aceitas (precisam de auth/infra antes de produção, a cargo do consumidor):
 - **Sem auth + CORS `*`** → qualquer origem aciona o agente (custo/abuso). Restrinja via
-  `AG_UI_CORS_ORIGINS`; adicione auth/rate-limit ao consumir a base.
+  `APP_CORS_ORIGINS`; adicione auth/rate-limit ao consumir a base.
 - **`MemorySaver`** é in-memory e ilimitado (cresce por `threadId`) — só demo.
 - **`threadId` sem isolamento** (quem souber um, continua/lê a conversa).
 - **Tools MCP** (se habilitadas) trazem conteúdo não-confiável (prompt injection); blast radius
@@ -507,12 +539,21 @@ Limitações aceitas (precisam de auth/infra antes de produção, a cargo do con
 
 Copy `.env.example` to `.env`. Required keys:
 
+**Convenção de prefixos:** `LLM_*` (provider), `AG_UI_*` (protocolo/wire — só
+`AG_UI_STREAM_RAW_EVENTS`), `APP_*` (aplicação/servidor).
+
 | Variable | Default | Purpose |
 |---|---|---|
-| `GEMINI_API_KEY` | — | Required (Gemini provider) |
-| `GEMINI_MODEL` | `gemini-3.1-flash-lite` | Model name |
-| `AG_UI_STREAM_RAW_EVENTS` | `true` | When `false`, omits `RAW` events (LangChain callback passthrough) from the SSE stream |
-| `AG_UI_CORS_ORIGINS` | `*` | Origens permitidas via CORS (CSV). `*` libera todas; com origens explícitas, credenciais são habilitadas. |
-| `AG_UI_MAX_BODY_BYTES` | `2000000` | Tamanho máximo do corpo de uma requisição (bytes). `0` desabilita o limite. |
-| `AG_UI_MCP_STARTUP_TIMEOUT` | `15` | Timeout (s) por servidor MCP ao carregar tools no startup. O servidor que estoura é logado e pulado. `0` desabilita. |
-| `APP_ENABLE_DOCS` | `true` | Quando `false`, desliga `/docs`, `/redoc` e `/openapi.json` (recomendado em produção). Config de APLICAÇÃO — sem prefixo `AG_UI_`. |
+| `LLM_PROVIDER` | `google` | Provider: `google`/`openai`/`anthropic`/`ollama`/`<custom>`. Mapeamento em `llm_service.py`. |
+| `LLM_API_KEY` | — | Chave do provider (alias aceito: `GEMINI_API_KEY`). Required pelos providers que exigem. |
+| `LLM_BASE_URL` | — | Base URL p/ `ollama` e p/ o provider `custom` (proxy OpenAI-compatível). Vazia nos cloud. |
+| `LLM_TEMPERATURE` | `0.0` | Temperatura do modelo. |
+| `LLM_TOOL_EMULATION` | `false` | Liga a camada de emulação (modelos sem tool calling/streaming nativo). |
+| `AG_UI_STREAM_RAW_EVENTS` | `true` | When `false`, omits `RAW` events (LangChain callback passthrough) from the SSE stream. |
+| `APP_CORS_ORIGINS` | `*` | Origens permitidas via CORS (CSV). `*` libera todas; com origens explícitas, credenciais são habilitadas. |
+| `APP_MAX_BODY_BYTES` | `2000000` | Tamanho máximo do corpo de uma requisição (bytes). `0` desabilita o limite. |
+| `APP_MCP_STARTUP_TIMEOUT` | `15` | Timeout (s) por servidor MCP ao carregar tools no startup. O servidor que estoura é logado e pulado. `0` desabilita. |
+| `APP_ENABLE_DOCS` | `true` | Quando `false`, desliga `/docs`, `/redoc` e `/openapi.json` (recomendado em produção). |
+
+> O nome do **modelo** não é variável de ambiente: o default por provider vive em
+> `_DEFAULT_MODELS` (`app/services/llm_service.py`).
