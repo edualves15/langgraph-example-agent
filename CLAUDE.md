@@ -415,6 +415,14 @@ com `LLM_BASE_URL`/`LLM_API_KEY` nuláveis). O **`.env` só guarda o nome do pro
 (`openai`/`anthropic`/`ollama`), com import **lazy** e erro claro se faltar; `google` é dep
 central. `get_llm()` valida a chave do provider que exige (fail-fast no startup, via lifespan).
 
+**Provider genérico (extensão sem editar o if-ladder):** o dev pode **cadastrar** um provider
+próprio com `register_provider(name, builder)` — `builder` é uma factory `() -> BaseChatModel`
+(lê `settings` se precisar). O `_CUSTOM_PROVIDERS` é consultado **antes** dos embutidos (pode
+sobrescrevê-los) e tem precedência sobre o fallback OpenAI-compatível; ative com
+`LLM_PROVIDER=<name>`. Registre no composition root (`app/main.py`) ou em módulo importado por
+ele, antes do startup. É o ponto de extensão para **wire não-OpenAI** (o ramo `custom` embutido
+continua sendo só o atalho OpenAI-compatível para nomes desconhecidos e não-cadastrados).
+
 #### Contrato do provider (o que é REQUISITO vs OPCIONAL)
 
 - **Tool calling = REQUISITO** — **nativo**. Toda a arquitetura (tools de backend/frontend, HITL)

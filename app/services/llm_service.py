@@ -3,15 +3,41 @@
 Seleciona o provider pelo **nome** (`LLM_PROVIDER`) e devolve um `BaseChatModel`. O `.env`
 guarda só o nome do provider (+ `LLM_API_KEY`/`LLM_BASE_URL` p/ ollama e custom); o **modelo
 default por provider vive aqui** — para trocar de modelo, edite `_DEFAULT_MODELS` ou o ramo
-do provider. Para um provider novo, adicione um `if`.
+do provider.
 
 Os pacotes de cada provider são **dependências opcionais** (extras do `pyproject.toml`): só o
 do provider selecionado precisa estar instalado (import lazy + erro claro se faltar).
+
+**Provider genérico (extensão):** além dos embutidos, o dev pode **cadastrar** um provider
+próprio com `register_provider(name, builder)` — uma factory `() -> BaseChatModel`. O nome
+registrado é consultado **antes** dos embutidos (pode até sobrescrevê-los) e tem precedência
+sobre o fallback OpenAI-compatível. Registre no composition root (`app/main.py`), ou em
+qualquer módulo importado por ele, antes do startup. Ex.:
+
+    from langchain_cohere import ChatCohere
+    from app.services.llm_service import register_provider
+    register_provider("cohere", lambda: ChatCohere(model="command-r"))
 """
+
+from collections.abc import Callable
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from app.config import settings
+
+# Providers cadastrados em runtime pelo dev (name -> factory). Ver register_provider.
+ProviderBuilder = Callable[[], BaseChatModel]
+_CUSTOM_PROVIDERS: dict[str, ProviderBuilder] = {}
+
+
+def register_provider(name: str, builder: ProviderBuilder) -> None:
+    """Cadastra (ou sobrescreve) um provider pelo nome.
+
+    `builder` é uma factory **sem argumentos** que devolve um `BaseChatModel` já configurado
+    (use `settings` lá dentro se precisar de temperatura/base_url/chave). Consultado antes dos
+    providers embutidos e do fallback OpenAI-compatível. Ative selecionando `LLM_PROVIDER=<name>`.
+    """
+    _CUSTOM_PROVIDERS[name.strip().lower()] = builder
 
 # Modelo default por provider (o .env não carrega nome de modelo). Edite aqui.
 _DEFAULT_MODELS = {
@@ -44,6 +70,11 @@ def _build_model() -> BaseChatModel:
     provider = settings.llm_provider.strip().lower()
     temperature = settings.llm_temperature
     base_url = settings.llm_base_url.strip() or None
+
+    # Provider cadastrado pelo dev tem precedência (pode até sobrescrever um embutido).
+    builder = _CUSTOM_PROVIDERS.get(provider)
+    if builder is not None:
+        return builder()
 
     if provider in ("google", "gemini"):
         try:
@@ -90,9 +121,9 @@ def _build_model() -> BaseChatModel:
             temperature=temperature,
         )
 
-    # CUSTOM (wrapper ainda desconhecido): assume API OpenAI-compatível — o padrão de mercado
-    # p/ proxies corporativos. `base_url`/`api_key` vêm da config (nuláveis). Ajuste este ramo
-    # (classe/modelo) conforme o seu provider.
+    # CUSTOM (nome desconhecido e NÃO cadastrado via register_provider): assume API
+    # OpenAI-compatível — o padrão de mercado p/ proxies corporativos. `base_url`/`api_key` vêm
+    # da config (nuláveis). Para um wire não-OpenAI, cadastre um provider próprio (ver topo).
     try:
         from langchain_openai import ChatOpenAI
     except ImportError as exc:
