@@ -72,11 +72,11 @@ def configure_middlewares(app: FastAPI) -> None:
 
     - **Limite de corpo** (`MaxBodySizeMiddleware`): recusa POSTs gigantes (DoS).
     - **CORS** (`CORSMiddleware`): permite que QUALQUER frontend AG-UI (outra origem)
-      consuma o agente — o desacoplamento do protocolo. Origens via `AG_UI_CORS_ORIGINS`.
+      consuma o agente — o desacoplamento do protocolo. Origens via `APP_CORS_ORIGINS`.
       Conformidade: a spec proíbe wildcard `*` com `allow_credentials=True`; por isso
       credenciais só são habilitadas quando as origens são explícitas (não `*`).
     """
-    app.add_middleware(MaxBodySizeMiddleware, max_bytes=settings.ag_ui_max_body_bytes)
+    app.add_middleware(MaxBodySizeMiddleware, max_bytes=settings.app_max_body_bytes)
 
     origins = settings.cors_origins
     app.add_middleware(

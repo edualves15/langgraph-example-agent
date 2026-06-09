@@ -6,29 +6,32 @@ from app.config import Settings
 from app.registries.tool_registry import get_local_tools
 
 
-def test_require_api_key_rejects_empty(monkeypatch):
-    # Fail-fast: chave vazia (ou só espaços) deve abortar o startup com erro claro.
-    import app.main as main
-
-    monkeypatch.setattr(main.settings, "gemini_api_key", "")
-    with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
-        main._require_api_key()
-
-    monkeypatch.setattr(main.settings, "gemini_api_key", "   ")
-    with pytest.raises(RuntimeError):
-        main._require_api_key()
+def test_gemini_api_key_alias(monkeypatch):
+    # Back-compat: GEMINI_API_KEY/GEMINI_MODEL continuam alimentando llm_api_key.
+    monkeypatch.setenv("GEMINI_API_KEY", "from-gemini-env")
+    assert Settings().llm_api_key == "from-gemini-env"
+    monkeypatch.setenv("LLM_API_KEY", "from-llm-env")  # LLM_API_KEY tem precedência
+    assert Settings().llm_api_key == "from-llm-env"
 
 
-def test_require_api_key_accepts_present(monkeypatch):
-    import app.main as main
+def test_get_llm_selects_provider(monkeypatch):
+    # get_llm() escolhe a classe pelo nome do provider, sem rede.
+    import app.services.llm_service as llm
 
-    monkeypatch.setattr(main.settings, "gemini_api_key", "some-key")
-    main._require_api_key()  # não levanta
+    monkeypatch.setattr(llm.settings, "llm_api_key", "k")
+
+    monkeypatch.setattr(llm.settings, "llm_provider", "google")
+    assert type(llm.get_llm()).__name__ == "ChatGoogleGenerativeAI"
+
+    # Provider que exige chave: vazia → erro claro no build (fail-fast no startup).
+    monkeypatch.setattr(llm.settings, "llm_api_key", "")
+    with pytest.raises(ValueError, match="LLM_API_KEY"):
+        llm.get_llm()
 
 
 def test_cors_origins_parsing():
-    assert Settings(ag_ui_cors_origins="*").cors_origins == ["*"]
-    assert Settings(ag_ui_cors_origins="https://a.com, https://b.com ").cors_origins == [
+    assert Settings(app_cors_origins="*").cors_origins == ["*"]
+    assert Settings(app_cors_origins="https://a.com, https://b.com ").cors_origins == [
         "https://a.com",
         "https://b.com",
     ]
