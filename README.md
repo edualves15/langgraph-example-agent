@@ -197,8 +197,9 @@ são **extras** opcionais do `pyproject` (`pip install '.[openai]'`); `google` j
 ### Provedor LLM e contrato
 
 `app/services/llm_service.py` é o único ponto de LLM: `get_llm()` escolhe a classe pelo nome do
-provider. Além dos embutidos (`google`/`openai`/`anthropic`/`ollama`/`custom`), o dev pode
-**cadastrar um provider próprio** sem editar o if-ladder:
+provider, resolvido por uma **tabela declarativa** (`_PROVIDERS`). Além dos embutidos
+(`google`/`openai`/`anthropic`/`ollama`/`custom`), o dev pode **cadastrar um provider próprio**
+sem editar a tabela:
 
 ```python
 # app/main.py (ou módulo importado por ele), antes do startup
