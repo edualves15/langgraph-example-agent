@@ -29,6 +29,20 @@ def test_get_llm_selects_provider(monkeypatch):
         llm.get_llm()
 
 
+def test_register_provider_overrides_builtin(monkeypatch):
+    # O dev pode cadastrar um provider genérico; tem precedência (até sobre embutidos).
+    import app.services.llm_service as llm
+
+    sentinel = object()
+    monkeypatch.setitem(llm._CUSTOM_PROVIDERS, "myprovider", lambda: sentinel)
+    monkeypatch.setattr(llm.settings, "llm_provider", "myprovider")
+    assert llm.get_llm() is sentinel
+
+    # Builder cadastrado roda sem chave (não passa pela validação dos embutidos).
+    monkeypatch.setattr(llm.settings, "llm_api_key", "")
+    assert llm.get_llm() is sentinel
+
+
 def test_cors_origins_parsing():
     assert Settings(app_cors_origins="*").cors_origins == ["*"]
     assert Settings(app_cors_origins="https://a.com, https://b.com ").cors_origins == [

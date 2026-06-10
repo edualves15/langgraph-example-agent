@@ -406,14 +406,26 @@ servidores MCP (`mcp.json` geral ou `Domain.mcp_servers`); ver **MCP**.
 ### LLM provider
 
 `app/services/llm_service.py` é o **único ponto** que lida com LLM. `get_llm()` seleciona o
-provider pelo **nome** (`LLM_PROVIDER`) via `if`s: `google` (`ChatGoogleGenerativeAI`, default),
-`openai` (`ChatOpenAI`), `anthropic` (`ChatAnthropic`), `ollama` (`ChatOllama`) e, para qualquer
-outro nome, um ramo **custom** (assume API OpenAI-compatível — padrão de proxies corporativos —
-com `LLM_BASE_URL`/`LLM_API_KEY` nuláveis). O **`.env` só guarda o nome do provider** (+
-`LLM_API_KEY`/`LLM_BASE_URL`); o **modelo default por provider** vive em `_DEFAULT_MODELS`
-(aqui, não no `.env`). Os pacotes de cada provider são **extras opcionais** do `pyproject`
-(`openai`/`anthropic`/`ollama`), com import **lazy** e erro claro se faltar; `google` é dep
-central. `get_llm()` valida a chave do provider que exige (fail-fast no startup, via lifespan).
+provider pelo **nome** (`LLM_PROVIDER`) por uma **tabela declarativa** `_PROVIDERS` (sem
+if-ladder): cada embutido é uma linha `_Provider(extra, module, cls, key_arg, requires_key,
+base_url_arg, default_base_url)` e **uma** função genérica (`_build_from_spec`) faz o import
+lazy + monta os kwargs. Linhas: `google` (`ChatGoogleGenerativeAI`, default), `openai`
+(`ChatOpenAI`), `anthropic` (`ChatAnthropic`), `ollama` (`ChatOllama`) e `custom` (fallback p/
+qualquer nome desconhecido: assume API OpenAI-compatível — padrão de proxies corporativos — com
+`LLM_BASE_URL`/`LLM_API_KEY` nuláveis); `_ALIASES` mapeia `gemini`→`google`. O **`.env` só
+guarda o nome do provider** (+ `LLM_API_KEY`/`LLM_BASE_URL`); o **modelo default por provider**
+vive em `_DEFAULT_MODELS` (aqui, não no `.env`). Os pacotes de cada provider são **extras
+opcionais** do `pyproject` (`openai`/`anthropic`/`ollama`), com import **lazy** e erro claro se
+faltar; `google` é dep central. `get_llm()` valida a chave do provider que exige (fail-fast no
+startup, via lifespan).
+
+**Provider genérico (extensão sem editar a tabela):** o dev pode **cadastrar** um provider
+próprio com `register_provider(name, builder)` — `builder` é uma factory `() -> BaseChatModel`
+(lê `settings` se precisar). O `_CUSTOM_PROVIDERS` é consultado **antes** dos embutidos (pode
+sobrescrevê-los) e tem precedência sobre o fallback OpenAI-compatível; ative com
+`LLM_PROVIDER=<name>`. Registre no composition root (`app/main.py`) ou em módulo importado por
+ele, antes do startup. É o ponto de extensão para **wire não-OpenAI** (o ramo `custom` embutido
+continua sendo só o atalho OpenAI-compatível para nomes desconhecidos e não-cadastrados).
 
 #### Contrato do provider (o que é REQUISITO vs OPCIONAL)
 
